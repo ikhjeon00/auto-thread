@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { logout } from "@/app/(auth)/login/actions";
 import { NAV, isActive } from "./nav";
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export function Sidebar({ onNavigate, badges = {} }: { onNavigate?: () => void; badges?: Record<string, number> }) {
   const pathname = usePathname();
   return (
     <div className="flex h-full flex-col">
@@ -39,6 +39,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     >
                       <Icon className="size-4" />
                       {item.label}
+                      {(badges[item.href] ?? 0) > 0 && (
+                        <span className="num ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-white">
+                          {badges[item.href] > 99 ? "99+" : badges[item.href]}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );

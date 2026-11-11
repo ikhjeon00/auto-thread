@@ -8,7 +8,7 @@ import { Sidebar } from "./sidebar";
 import { findNavItem } from "./nav";
 
 /** 1024px(lg) 이상: 왼쪽 고정 사이드바 / 미만: 상단 바 + 서랍형 사이드바 */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, badges }: { children: React.ReactNode; badges?: Record<string, number> }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const current = findNavItem(pathname);
@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r bg-sidebar lg:block">
-        <Sidebar />
+        <Sidebar badges={badges} />
       </aside>
 
       <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b bg-sidebar px-4 lg:hidden">
@@ -26,9 +26,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="메뉴 열기"
-          className="-ml-2 inline-flex size-9 items-center justify-center rounded-md hover:bg-accent"
+          className="relative -ml-2 inline-flex size-9 items-center justify-center rounded-md hover:bg-accent"
         >
           <Menu className="size-5" />
+          {Object.values(badges ?? {}).some((n) => n > 0) && <span className="absolute top-3 left-8 size-2 rounded-full bg-destructive" />}
         </button>
         <span className="font-semibold">{current?.label ?? "AUTO THREAD"}</span>
       </header>
@@ -53,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <X className="size-5" />
         </button>
-        <Sidebar onNavigate={() => setOpen(false)} />
+        <Sidebar badges={badges} onNavigate={() => setOpen(false)} />
       </aside>
 
       <main className="lg:pl-60">
