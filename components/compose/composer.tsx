@@ -102,6 +102,14 @@ export function Composer({ accounts, disclosures, bannedWords, drafts, initial }
     }
   }, [c.linkUrl, c.disclosureId, disclosures]);
 
+  // 상품 홍보글인데 고지 문구가 없으면 기본 문구를 자동 선택
+  useEffect(() => {
+    if (c.kind !== "product" || c.disclosureId) return;
+    const d = disclosures.find((x) => x.is_default) ?? disclosures[0];
+    if (d) setC((prev) => ({ ...prev, disclosureId: d.id }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.kind]);
+
   function saveDraft() {
     start(async () => {
       const r = await saveDraftAction(c, postId);
@@ -494,14 +502,20 @@ function StepWrite({
           </NativeSelect>
           {c.disclosureId && (
             <>
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(DISCLOSURE_POS_LABEL) as DisclosurePosition[]).map((p) => (
-                  <Chip key={p} selected={c.disclosurePosition === p} onClick={() => set("disclosurePosition", p)}>
-                    {DISCLOSURE_POS_LABEL[p]}
-                  </Chip>
-                ))}
-              </div>
-              {plan.disclosurePosition && plan.disclosurePosition !== c.disclosurePosition && (
+              {c.kind === "product" ? (
+                <p className="text-xs text-muted-foreground">
+                  상품 홍보글은 고지 문구가 <b className="text-foreground">첫 댓글 맨 앞</b>에 들어갑니다. (고지 문구 + 댓글 내용 + 링크)
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(DISCLOSURE_POS_LABEL) as DisclosurePosition[]).map((p) => (
+                    <Chip key={p} selected={c.disclosurePosition === p} onClick={() => set("disclosurePosition", p)}>
+                      {DISCLOSURE_POS_LABEL[p]}
+                    </Chip>
+                  ))}
+                </div>
+              )}
+              {c.kind !== "product" && plan.disclosurePosition && plan.disclosurePosition !== "reply_top" && plan.disclosurePosition !== c.disclosurePosition && (
                 <p className="text-xs text-muted-foreground">
                   링크 댓글이 없어서 &lsquo;{DISCLOSURE_POS_LABEL[plan.disclosurePosition]}&rsquo;에 넣습니다.
                 </p>

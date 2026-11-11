@@ -11,11 +11,14 @@ export type PlannedReply = { text: string; kind: "user" | "link" | "disclosure" 
 
 export type Issue = { level: "error" | "warn"; field: string; message: string };
 
+/** reply_top: 첫 댓글 맨 앞 (상품 홍보글 전용) */
+export type PlanDisclosurePosition = DisclosurePosition | "reply_top";
+
 export type PublishPlan = {
   mainText: string;
   linkAttachment: string | null;
   linkPosition: LinkPosition | null;
-  disclosurePosition: DisclosurePosition | null;
+  disclosurePosition: PlanDisclosurePosition | null;
   mediaType: "TEXT" | "IMAGE" | "VIDEO" | "CAROUSEL";
   replies: PlannedReply[];
   issues: Issue[];
@@ -88,8 +91,16 @@ export function buildPlan(
     }
   }
 
-  let disclosurePosition: DisclosurePosition | null = null;
-  if (disclosure) {
+  let disclosurePosition: PlanDisclosurePosition | null = null;
+  if (disclosure && c.kind === "product") {
+    // 상품 홍보글: 고지 문구를 첫 댓글 맨 앞에 → "고지 문구 + 댓글 내용(+ 링크)"
+    disclosurePosition = "reply_top";
+    if (replies.length > 0) {
+      replies[0] = { ...replies[0], text: join(disclosure.text, replies[0].text) };
+    } else {
+      replies.unshift({ text: disclosure.text, kind: "disclosure" });
+    }
+  } else if (disclosure) {
     disclosurePosition = c.disclosurePosition;
     // 링크 댓글이 없으면 '링크 댓글' 위치는 링크가 있는 곳(본문) 또는 별도 댓글로 바꾼다
     if (disclosurePosition === "link_reply" && linkReplyIdx < 0) {
@@ -135,7 +146,9 @@ export function buildPlan(
   if (tagErr) issues.push({ level: "error", field: "topicTag", message: tagErr });
   if (c.media.length > 20) issues.push({ level: "error", field: "media", message: "사진·영상은 최대 20개입니다." });
 
-  if (link && !disclosure) {
+  if (c.kind === "product" && !disclosure) {
+    issues.push({ level: "warn", field: "disclosure", message: "상품 홍보글입니다. 제휴 고지 문구를 선택하세요." });
+  } else if (link && !disclosure) {
     issues.push({ level: "warn", field: "disclosure", message: "링크가 있는데 제휴 고지 문구가 없습니다. 제휴 링크라면 고지 문구를 넣으세요." });
   }
   const banned = (opts.bannedWords ?? []).map((w) => w.trim()).filter(Boolean);

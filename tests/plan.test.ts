@@ -69,6 +69,26 @@ describe("buildPlan", () => {
     expect(hasErrors(warn)).toBe(false);
   });
 
+  it("상품 홍보글: 고지 문구가 첫 댓글 맨 앞 (고지 + 댓글 + 링크)", () => {
+    const withReply = buildPlan(
+      base({ kind: "product", media: [img(1)], replies: ["이거 진짜 좋아요", "둘째"], linkUrl: "https://link.coupang.com/a/x", disclosureId: "d1", disclosurePosition: "separate_reply" }),
+      { disclosure: coupang },
+    );
+    expect(withReply.disclosurePosition).toBe("reply_top");
+    expect(withReply.replies[0].text).toBe(`${coupang.text}\n\n이거 진짜 좋아요\n\nhttps://link.coupang.com/a/x`);
+    expect(withReply.replies).toHaveLength(2);
+
+    const noReply = buildPlan(base({ kind: "product", media: [img(1)], linkUrl: "https://link.coupang.com/a/x", disclosureId: "d1" }), { disclosure: coupang });
+    expect(noReply.replies).toEqual([{ kind: "link", text: `${coupang.text}\n\nhttps://link.coupang.com/a/x` }]);
+
+    const bodyLink = buildPlan(base({ kind: "product", linkUrl: "https://link.coupang.com/a/x", linkPosition: "body", disclosureId: "d1" }), { disclosure: coupang });
+    expect(bodyLink.mainText).toBe("본문\n\nhttps://link.coupang.com/a/x");
+    expect(bodyLink.replies).toEqual([{ kind: "disclosure", text: coupang.text }]);
+
+    const missing = buildPlan(base({ kind: "product" }));
+    expect(missing.issues.some((i) => i.field === "disclosure")).toBe(true);
+  });
+
   it("reply over 500 is an error", () => {
     expect(hasErrors(buildPlan(base({ replies: ["가".repeat(501)] })))).toBe(true);
   });
