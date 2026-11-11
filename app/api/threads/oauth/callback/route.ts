@@ -30,15 +30,18 @@ export async function GET(req: NextRequest) {
   const code = (sp.get("code") ?? "").replace(/#_$/, "");
   if (!code) return back(`error=${encodeURIComponent("인증 코드가 없습니다.")}`);
 
+  let step = "인증 코드 교환";
   try {
     const short = await exchangeCode(code);
+    step = "장기 토큰 교환";
     const long = await exchangeLongLived(short.access_token);
+    step = "계정 저장";
     const acc = await upsertAccountFromToken(long);
     await notify("info", "account_connected", `@${acc.username} 계정을 ${acc.isNew ? "연결" : "다시 연결"}했습니다.`, "/settings");
     return back(`connected=${encodeURIComponent(acc.username)}`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "알 수 없는 오류";
-    console.error("[oauth/callback]", msg);
-    return back(`error=${encodeURIComponent(`연결 실패: ${msg}`)}`);
+    console.error("[oauth/callback]", step, msg);
+    return back(`error=${encodeURIComponent(`연결 실패(${step}): ${msg}`)}`);
   }
 }

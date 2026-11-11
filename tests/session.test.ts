@@ -22,3 +22,12 @@ describe("session token", () => {
     expect(safeEqual("abc", "abcd")).toBe(false);
   });
 });
+
+import { normalizeSupabaseUrl } from "@/lib/db/admin";
+describe("normalizeSupabaseUrl", () => {
+  it("strips paths and trailing slashes", () => {
+    expect(normalizeSupabaseUrl("https://abc.supabase.co/rest/v1/")).toBe("https://abc.supabase.co");
+    expect(normalizeSupabaseUrl(" https://abc.supabase.co/ ")).toBe("https://abc.supabase.co");
+    expect(normalizeSupabaseUrl("https://abc.supabase.co")).toBe("https://abc.supabase.co");
+  });
+});
