@@ -53,6 +53,14 @@ export class OpenAiProvider implements AiProvider {
       throw toAiError(e);
     }
   }
+
+  async checkModel(model: string): Promise<void> {
+    try {
+      await this.client.responses.create({ model, input: "ping", max_output_tokens: 16 });
+    } catch (e) {
+      throw toAiError(e);
+    }
+  }
 }
 
 function toAiError(e: unknown): AiError {

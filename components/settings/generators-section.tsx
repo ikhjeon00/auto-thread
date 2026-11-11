@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { PROVIDER_LABEL, PROVIDERS } from "@/lib/ai/types";
+import { ModelSelect } from "./model-select";
 import { deleteGeneratorAction, saveGeneratorAction, type GeneratorInput } from "@/app/(main)/settings/ai-actions";
 
 export type GeneratorView = Omit<GeneratorInput, "version" | "example_count"> & { id: string; version: number; example_count: number };
@@ -90,6 +91,7 @@ export function GeneratorsSection({ items }: { items: GeneratorView[] }) {
             className="flex flex-col gap-3 rounded-md border bg-background p-4"
             onSubmit={(e) => {
               e.preventDefault();
+              setError(null);
               start(async () => {
                 const r = await saveGeneratorAction(editing.id, editing.v);
                 if (r.ok) setEditing(null);
@@ -118,7 +120,10 @@ export function GeneratorsSection({ items }: { items: GeneratorView[] }) {
             <div className="grid gap-3 sm:grid-cols-[180px_1fr_120px]">
               <div className="flex flex-col gap-1.5">
                 <Label>AI 회사</Label>
-                <NativeSelect value={editing.v.provider ?? ""} onChange={(e) => set("provider", (e.target.value || null) as GeneratorInput["provider"])}>
+                <NativeSelect
+                  value={editing.v.provider ?? ""}
+                  onChange={(e) => editing && setEditing({ ...editing, v: { ...editing.v, provider: (e.target.value || null) as GeneratorInput["provider"], model: null } })}
+                >
                   <option value="">기본 모델 사용</option>
                   {PROVIDERS.map((p) => (
                     <option key={p} value={p}>
@@ -129,13 +134,7 @@ export function GeneratorsSection({ items }: { items: GeneratorView[] }) {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="g-model">모델</Label>
-                <Input
-                  id="g-model"
-                  disabled={!editing.v.provider}
-                  placeholder={editing.v.provider ? "모델 이름" : "기본 모델 사용"}
-                  value={editing.v.model ?? ""}
-                  onChange={(e) => set("model", e.target.value || null)}
-                />
+                <ModelSelect id="g-model" provider={editing.v.provider ?? null} value={editing.v.model ?? ""} onChange={(m) => set("model", m || null)} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="g-ex">보석함 예시 수</Label>
@@ -160,7 +159,7 @@ export function GeneratorsSection({ items }: { items: GeneratorView[] }) {
                 취소
               </Button>
               <Button type="submit" disabled={pending}>
-                저장
+                {pending ? (editing.v.model ? "모델 확인 중…" : "저장 중…") : "저장"}
               </Button>
             </div>
           </form>

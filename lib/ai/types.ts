@@ -27,6 +27,8 @@ export interface AiProvider {
   readonly name: Provider;
   generateJson(req: JsonRequest): Promise<JsonResponse>;
   listModels(): Promise<string[]>;
+  /** 아주 짧은 시험 호출로 이 키로 그 모델을 실제로 쓸 수 있는지 확인. 안 되면 AiError */
+  checkModel(model: string): Promise<void>;
 }
 
 export class AiError extends Error {

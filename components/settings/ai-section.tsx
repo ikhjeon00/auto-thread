@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { CheckCircle2, Download, ExternalLink, KeyRound, Plus, Trash2, XCircle } from "lucide-react";
 import { formatKst } from "@/lib/time";
+import { ModelSelect, loadModels as fetchModels } from "./model-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { NativeSelect } from "@/components/ui/select";
 import { PROVIDER_LABEL, PROVIDERS, type ModelRef, type Provider } from "@/lib/ai/types";
 import type { PricingTable } from "@/lib/ai/pricing";
 import type { KeyStatus } from "@/lib/ai/config";
-import { deleteApiKeyAction, listModelsAction, saveAiDefaultsAction, saveApiKeyAction, savePricingAction } from "@/app/(main)/settings/ai-actions";
+import { deleteApiKeyAction, saveAiDefaultsAction, saveApiKeyAction, savePricingAction } from "@/app/(main)/settings/ai-actions";
 
 type Props = {
   keys: Record<Provider, KeyStatus>;
@@ -32,7 +33,7 @@ export function AiSection(p: Props) {
   const loadModels = async (prov: Provider) => {
     setLoading(prov);
     setListError(null);
-    const r = await listModelsAction(prov);
+    const r = await fetchModels(prov, true);
     setLoading(null);
     if (r.ok) setModels((m) => ({ ...m, [prov]: r.data }));
     else setListError(r.error);
@@ -105,7 +106,7 @@ function ModelPicker({
   models: Partial<Record<Provider, string[]>>;
   id: string;
 }) {
-  const list = models[value.provider] ?? [];
+  void models;
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
@@ -118,20 +119,11 @@ function ModelPicker({
             </option>
           ))}
         </NativeSelect>
-        <Input
-          id={id}
-          className="flex-1"
-          list={`${id}-list`}
-          placeholder="모델 이름 (모델 목록에서 고르거나 직접 입력)"
-          value={value.model}
-          onChange={(e) => onChange({ ...value, model: e.target.value.trim() })}
-        />
-        <datalist id={`${id}-list`}>
-          {list.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
+        <div className="min-w-0 flex-1">
+          <ModelSelect id={id} provider={keys[value.provider].source ? value.provider : null} value={value.model} onChange={(model) => onChange({ ...value, model })} />
+        </div>
       </div>
+      {!keys[value.provider].source && <p className="text-xs text-muted-foreground">이 회사의 키를 먼저 등록하세요.</p>}
     </div>
   );
 }
@@ -144,7 +136,7 @@ function DefaultsCard({ defaults, keys, models }: { defaults: Props["defaults"];
     <Card>
       <CardHeader>
         <CardTitle>기본 모델</CardTitle>
-        <CardDescription>생성기에 모델을 따로 지정하지 않으면 이 모델을 씁니다. 사진 이해용은 수익화 농장(상품 사진 보고 글쓰기)에 쓰입니다.</CardDescription>
+        <CardDescription>생성기에 모델을 따로 지정하지 않으면 이 모델을 씁니다. 사진 이해용은 수익화 농장(상품 사진 보고 글쓰기)에 쓰입니다. 저장할 때 짧은 시험 호출로 실제로 쓸 수 있는지 확인합니다.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <ModelPicker id="m-text" label="글쓰기(텍스트)" value={v.text} onChange={(text) => setV({ ...v, text })} keys={keys} models={models} />
@@ -155,6 +147,7 @@ function DefaultsCard({ defaults, keys, models }: { defaults: Props["defaults"];
             disabled={pending}
             onClick={() =>
               start(async () => {
+                setMsg({ ok: true, text: "모델을 확인하는 중…" });
                 const r = await saveAiDefaultsAction(v);
                 setMsg(r.ok ? { ok: true, text: "저장했습니다." } : { ok: false, text: r.error });
               })

@@ -57,6 +57,17 @@ export async function deleteApiKeyAction(p: string): Promise<Result> {
 
 // ---------------------------------------------------------------- 모델·단가
 
+/** 저장 전에 그 모델을 실제로 쓸 수 있는지 짧게 시험 호출한다 */
+async function assertModelUsable(ref: { provider: (typeof PROVIDERS)[number] | null; model: string | null }, label: string) {
+  if (!ref.provider || !ref.model) return;
+  try {
+    await (await getProvider(ref.provider)).checkModel(ref.model);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`${label} 모델 ${ref.provider}:${ref.model} 을(를) 쓸 수 없어 저장하지 않았습니다. ${msg}`);
+  }
+}
+
 export async function listModelsAction(p: string): Promise<Result<string[]>> {
   try {
     await requireSession();
@@ -74,6 +85,10 @@ export async function saveAiDefaultsAction(input: z.input<typeof defaultsInput>)
   try {
     await requireSession();
     const value = defaultsInput.parse(input);
+    await assertModelUsable(value.text, "글쓰기");
+    if (value.vision.provider !== value.text.provider || value.vision.model !== value.text.model) {
+      await assertModelUsable(value.vision, "사진 이해");
+    }
     const { error } = await db().from("app_settings").upsert({ key: "ai_defaults", value }, { onConflict: "key" });
     if (error) throw new Error(error.message);
     refresh();
@@ -123,6 +138,7 @@ export async function saveGeneratorAction(id: string | null, input: GeneratorInp
     await requireSession();
     const v = generatorInput.parse(input);
     const row = { ...v, model: v.model || null, provider: v.model ? v.provider : null };
+    await assertModelUsable(row, "생성기");
     const { error } = id ? await db().from("generators").update(row).eq("id", uuid.parse(id)) : await db().from("generators").insert(row);
     if (error) throw new Error(error.code === "23505" ? "같은 이름·버전의 생성기가 있습니다. 버전을 올리세요." : error.message);
     refresh();

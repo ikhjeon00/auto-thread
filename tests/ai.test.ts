@@ -26,6 +26,7 @@ const fakeProvider = (name: "openai" | "gemini"): AiProvider => ({
   async listModels() {
     return [];
   },
+  async checkModel() {},
 });
 
 const post = (text: string) => ({ text, first_reply: "여러분은요?", topic_tag: "#일상.", category: "일상" });
@@ -153,5 +154,14 @@ describe("API 키 저장", () => {
     await saveStoredKey("gemini", null);
     expect(await getApiKey("gemini")).toBe("env-gemini-key-1234");
     delete process.env.GEMINI_API_KEY;
+  });
+});
+
+describe("모델 목록", () => {
+  it("Gemini 는 3 버전 이상만, 최신순", async () => {
+    const { filterGeminiModels } = await import("@/lib/ai/models");
+    expect(
+      filterGeminiModels(["gemini-2.5-flash", "gemini-3.8-flash", "gemini-3-pro", "gemma-3-27b", "gemini-4.0-flash", "gemini-3.8-flash", "gemini-1.5-pro"]),
+    ).toEqual(["gemini-4.0-flash", "gemini-3.8-flash", "gemini-3-pro"]);
   });
 });

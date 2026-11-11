@@ -1,6 +1,7 @@
 import "server-only";
 import { ApiError, GoogleGenAI, type Part } from "@google/genai";
 import { AiError, type AiProvider, type JsonRequest, type JsonResponse } from "../types";
+import { filterGeminiModels } from "../models";
 
 /** Google Gemini (AI Studio 키) + JSON 스키마 강제 출력 */
 export class GeminiProvider implements AiProvider {
@@ -56,7 +57,16 @@ export class GeminiProvider implements AiProvider {
       for await (const m of pager) {
         if (m.name && (m.supportedActions ?? ["generateContent"]).includes("generateContent")) out.push(m.name.replace(/^models\//, ""));
       }
-      return out.sort();
+      // 오래된 모델은 새 계정에서 막혀 있는 경우가 많아 3 버전 이상만 보여 준다
+      return filterGeminiModels(out);
+    } catch (e) {
+      throw toAiError(e);
+    }
+  }
+
+  async checkModel(model: string): Promise<void> {
+    try {
+      await this.ai.models.generateContent({ model, contents: "ping", config: { maxOutputTokens: 32 } });
     } catch (e) {
       throw toAiError(e);
     }
