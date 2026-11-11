@@ -228,7 +228,7 @@ function Reactions({ accounts, byAccount, today }: { accounts: DashAccount[]; by
 
 // ------------------------------------------------------------------ 계정 표
 
-const PERIODS = { today: "오늘", yesterday: "어제", d7: "7일", d30: "30일" } as const;
+const PERIODS = { today: "오늘", yesterday: "어제", d7: "7일", d14: "14일", d30: "30일" } as const;
 type Period = keyof typeof PERIODS;
 type SortKey = "username" | "group" | "followers" | "delta" | "views" | "replies" | "likes" | "status" | "synced";
 const STATUS_LABEL: Record<string, string> = { active: "정상", needs_reconnect: "재연결 필요", disabled: "해제됨" };
@@ -257,7 +257,7 @@ function AccountTable({
   const PAGE = 50;
   const yesterday = addDays(today, -1);
   const groupName = new Map(groups.map((g) => [g.id, g]));
-  const dates = period === "today" ? [today] : period === "yesterday" ? [yesterday] : Array.from({ length: period === "d7" ? 7 : 30 }, (_, i) => addDays(today, -i));
+  const dates = period === "today" ? [today] : period === "yesterday" ? [yesterday] : Array.from({ length: period === "d7" ? 7 : period === "d14" ? 14 : 30 }, (_, i) => addDays(today, -i));
 
   const rows = accounts
     .filter((a) => (!q || a.username.toLowerCase().includes(q.toLowerCase())) && (!group || a.group_id === group) && (!status || a.status === status))
