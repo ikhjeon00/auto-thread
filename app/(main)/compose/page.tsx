@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { Composer, type ComposerAccount, type ComposerDisclosure } from "@/components/compose/composer";
+import { Composer, type AiStatus, type ComposerAccount, type ComposerDisclosure, type ComposerGenerator } from "@/components/compose/composer";
+import type { PersonaInput } from "./actions";
+import { getAiSettings, keyConfigured } from "@/lib/ai/config";
+import type { Provider } from "@/lib/ai/types";
 import type { DraftItem } from "@/components/compose/drafts-menu";
 import { composeSchema, emptyCompose, type Compose } from "@/lib/compose/schema";
 import { db } from "@/lib/db/admin";
@@ -7,10 +10,12 @@ import { getSettings } from "@/lib/settings";
 
 export const metadata = { title: "글 작성 · AUTO THREAD" };
 export const dynamic = "force-dynamic";
+// AI 생성(서버 액션)이 오래 걸릴 수 있다
+export const maxDuration = 120;
 
 export default async function ComposePage({ searchParams }: { searchParams: Promise<{ id?: string; account?: string }> }) {
   const { id, account } = await searchParams;
-  const [accRes, discRes, draftRes, settings, postRes] = await Promise.all([
+  const [accRes, discRes, draftRes, settings, postRes, genRes, personaRes, aiSettings] = await Promise.all([
     db().from("threads_accounts").select("id, username, profile_picture_url, status").neq("status", "disabled").order("created_at"),
     db().from("disclosures").select("id, name, text, match_domains, default_position, is_default").order("is_default", { ascending: false }).order("name"),
     db()
@@ -23,7 +28,26 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
     id
       ? db().from("posts").select("id, status, compose, scheduled_at").eq("id", id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    db().from("generators").select("id, name, kind, provider, model").eq("is_active", true).order("created_at"),
+    db().from("personas").select("account_id, age_group, gender, job, tone"),
+    getAiSettings().catch(() => null),
   ]);
+
+  const generators = (genRes.data ?? []) as ComposerGenerator[];
+  const personas: Record<string, PersonaInput> = Object.fromEntries(
+    ((personaRes.data ?? []) as (PersonaInput & { account_id: string })[]).map(({ account_id, ...p }) => [account_id, p]),
+  );
+  const def = aiSettings?.defaults.text;
+  const defaultReady = !!def?.model && keyConfigured(def.provider);
+  const genReady = generators.some((g) => g.model && g.provider && keyConfigured(g.provider as Provider));
+  const ai: AiStatus = defaultReady || genReady
+    ? { ready: true, message: null }
+    : {
+        ready: false,
+        message: !keyConfigured("openai") && !keyConfigured("gemini")
+          ? "AI 키가 없습니다. Vercel 환경변수에 OPENAI_API_KEY 또는 GEMINI_API_KEY를 넣고 다시 배포하세요."
+          : "기본 AI 모델을 아직 고르지 않았습니다.",
+      };
 
   const accounts = (accRes.data ?? []) as ComposerAccount[];
   const drafts: DraftItem[] = (draftRes.data ?? []).map((d) => ({
@@ -56,6 +80,9 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
         accounts={accounts}
         disclosures={(discRes.data ?? []) as ComposerDisclosure[]}
         bannedWords={settings.bannedWords}
+        generators={generators}
+        personas={personas}
+        ai={ai}
         drafts={drafts}
         initial={{
           postId: editable ? post.id : null,

@@ -14,9 +14,8 @@ const serverSchema = z.object({
   THREADS_REDIRECT_URI: z.string().url().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
   CRON_SECRET: z.string().min(16),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  AI_MODEL_TEXT: z.string().optional(),
-  AI_MODEL_VISION: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
   APP_TIMEZONE: z.string().default("Asia/Seoul"),
 });
 

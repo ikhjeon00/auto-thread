@@ -9,8 +9,8 @@
 | M1 | 프로젝트 기반, 디자인 시스템, 사이드바, 비밀번호 로그인, DB 스키마·seed | ✅ |
 | M2 | Threads 계정 연결(OAuth), 토큰 암호화·갱신, 텍스트 글 테스트 발행 | ✅ |
 | M3 | 글 작성 3단계, 미디어, 댓글, 링크, 고지, 예약, publish 크론 | ✅ |
-| M4 | 예약한 글, 내가 올린 글, 활동 알림 | 구현 완료 · 실사용 확인 대기 |
-| M5 | AI 생성 | |
+| M4 | 예약한 글, 내가 올린 글, 활동 알림 | ✅ |
+| M5 | AI 생성 (OpenAI / Gemini) | 구현 완료 · 실사용 확인 대기 |
 | M6 | 글 창고 | |
 | M7 | 농장, 자료실 | |
 | M8 | 대시보드 통계 | |
@@ -36,6 +36,7 @@
       (다시 실행해도 안전하다)
    4. `supabase/migrations/0003_product_disclosure.sql` — 상품 홍보글 고지 문구 위치(첫 댓글 맨 앞) 허용
    5. `supabase/migrations/0004_reply_media.sql` — 댓글에 사진·영상 1개 첨부
+   6. `supabase/migrations/0005_ai.sql` — AI 회사·모델 선택, 상품 홍보글 생성기
 3. **Table Editor**에서 테이블 26개가 생겼고, **Storage**에 `media` 버킷(Public)이 생겼는지 확인한다.
 4. **Project Settings → API** 에서 다음 값을 복사해 둔다.
    - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
@@ -108,7 +109,7 @@ openssl rand -base64 32   # TOKEN_ENCRYPTION_KEY
 | `CRON_SECRET` | M1 | `/api/cron/*` 호출 인증 |
 | `THREADS_APP_ID` / `THREADS_APP_SECRET` / `THREADS_REDIRECT_URI` | M2 | Threads 앱 정보 |
 | `TOKEN_ENCRYPTION_KEY` | M2 | Threads 토큰 암호화(AES-256-GCM) |
-| `ANTHROPIC_API_KEY` / `AI_MODEL_TEXT` / `AI_MODEL_VISION` | M5 | AI 생성 |
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` | M5 | AI 생성. 쓰는 회사의 키만 넣으면 된다. 모델은 앱의 설정 > AI 에서 고른다 |
 | `APP_TIMEZONE` | – | 기본 `Asia/Seoul` |
 
 ## 3. 로컬 실행
@@ -154,6 +155,21 @@ http://localhost:3000 접속 → `APP_PASSWORD`로 로그인.
 - **활동**(`/activity`): 알림 목록, 읽지 않음·종류·수준 필터, 누르면 읽음 처리 후 해당 화면으로 이동, 모두 읽음.
 - 사이드바 배지: 활동(읽지 않은 알림 수), 예약한 글(실패한 글 수).
 
+## AI 글 생성 (M5)
+
+- 지원 회사: **OpenAI(GPT)**, **Google Gemini**. `lib/ai/providers/*` 에 회사별 구현이 있고, 앱 코드는 `lib/ai` 의 공통 형태만 쓴다.
+- 설정 > AI
+  - 연결 상태(키 유무), 「모델 목록」으로 그 회사에서 쓸 수 있는 모델 이름을 불러온다.
+  - 기본 모델: 글쓰기용 / 사진 이해용(수익화 농장).
+  - 모델 단가: 1M 토큰당 USD를 **직접 입력**한다(회사·모델마다 다르고 자주 바뀐다). 비우면 비용을 계산하지 않는다.
+  - 이번 달 AI 비용(입력한 단가로 계산한 추정치), AI 생성기 추가·수정·복제(새 버전)·삭제. 생성기마다 회사·모델을 따로 고를 수 있다.
+- 설정 > 주제·형식: 주제 풀(여러 줄 붙여넣기 지원)과 글 형식 관리. 설정 > 계정: 계정별 페르소나.
+- 글 작성 1단계에서 「AI로 만들기」 → 생성기·주제(비우면 랜덤, 상품이면 상품명·특징). 2단계 「AI 후보」에서 1~5개씩 만들고 비교해 「적용」.
+- 프롬프트 = 생성기 시스템 프롬프트 + 공통 규칙 + 페르소나 + 주제(최근 안 쓴 것 중 랜덤) + 글 형식(랜덤) + 길이(랜덤) + 보석함 예시 + 이 계정 최근 글 15개.
+- 결과는 JSON 스키마로 강제하고, 길이·금칙어·해시태그·유사도 검사에 떨어진 글만 한 번 더 만든다. 그래도 남은 문제는 후보에 경고로 표시한다.
+- 호출마다 토큰 수와 비용을 `generation_logs` 에 남긴다. 실패하면 활동에 알림.
+- 고정된 시스템 프롬프트를 맨 앞에 두어 두 회사의 자동 프롬프트 캐시가 잘 맞도록 했다(별도 설정 없음).
+
 ## 테스트
 
 ```bash
@@ -179,6 +195,7 @@ lib/auth                  세션 쿠키 서명/검증
 lib/crypto                토큰 암호화(AES-256-GCM)
 lib/threads               Threads API 클라이언트, 계정·토큰 관리, 글자 수 계산
 lib/notify                활동 알림 저장
+lib/ai                    AI 공통 형태, 회사별 구현(openai/gemini), 프롬프트, 검사, 생성
 lib/compose               작성 내용 검증(zod)·발행 형태 변환·저장
 lib/publisher             발행 상태 머신(/api/cron/publish)
 lib/scheduler             예약 충돌 검사, 가까운 빈 시간 찾기

@@ -29,12 +29,21 @@ import {
 } from "@/app/(main)/compose/actions";
 import type { ScheduleCheck } from "@/lib/scheduler/check";
 import { MediaPicker } from "./media-picker";
+import { AiPanel } from "./ai-panel";
+import { EMPTY_PERSONA, PersonaEditor } from "@/components/persona/persona-editor";
+import type { GeneratedCandidate, PersonaInput } from "@/app/(main)/compose/actions";
 import { DraftsMenu, type DraftItem } from "./drafts-menu";
 
 export type ComposerAccount = { id: string; username: string; profile_picture_url: string | null; status: string };
 export type ComposerDisclosure = DisclosureLite & { is_default: boolean };
 
+export type ComposerGenerator = { id: string; name: string; kind: string; provider: string | null; model: string | null };
+export type AiStatus = { ready: boolean; message: string | null };
+
 type Props = {
+  generators: ComposerGenerator[];
+  personas: Record<string, PersonaInput>;
+  ai: AiStatus;
   accounts: ComposerAccount[];
   disclosures: ComposerDisclosure[];
   bannedWords: string[];
@@ -58,7 +67,7 @@ const kstInputToIso = (v: string) => fromZonedTime(`${v}:00`, APP_TZ).toISOStrin
 const isoToKstInput = (iso: string) => formatInTimeZone(new Date(iso), APP_TZ, "yyyy-MM-dd'T'HH:mm");
 const fmtKst = (iso: string) => formatInTimeZone(new Date(iso), APP_TZ, "M월 d일 HH:mm");
 
-export function Composer({ accounts, disclosures, bannedWords, drafts, initial }: Props) {
+export function Composer({ accounts, disclosures, bannedWords, drafts, initial, generators, personas: initialPersonas, ai }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(initial.postId && initial.compose.accountId ? 1 : 0);
   const [c, setC] = useState<Compose>(initial.compose);
@@ -67,6 +76,8 @@ export function Composer({ accounts, disclosures, bannedWords, drafts, initial }
   const [pending, start] = useTransition();
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
   const [recent, setRecent] = useState<string[]>([]);
+  const [personas, setPersonas] = useState(initialPersonas);
+  const [candidates, setCandidates] = useState<GeneratedCandidate[]>([]);
   const [done, setDone] = useState<{ scheduledAt: string | null } | null>(null);
 
   const set = <K extends keyof Compose>(k: K, v: Compose[K]) => setC((prev) => ({ ...prev, [k]: v }));
@@ -194,12 +205,41 @@ export function Composer({ accounts, disclosures, bannedWords, drafts, initial }
       )}
 
       {step === 0 && (
-        <StepSetup c={c} set={set} accounts={accounts} onNext={() => setStep(1)} />
+        <StepSetup
+          c={c}
+          set={set}
+          accounts={accounts}
+          generators={generators}
+          ai={ai}
+          persona={personas[c.accountId] ?? EMPTY_PERSONA}
+          onPersonaChange={(v) => setPersonas((p) => ({ ...p, [c.accountId]: v }))}
+          onNext={() => setStep(1)}
+        />
       )}
 
       {step === 1 && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
           <div className={cn("flex min-w-0 flex-col gap-4", mobileTab === "preview" && "hidden lg:flex")}>
+            {c.mode === "ai" && (
+              <AiPanel
+                c={c}
+                candidates={candidates}
+                setCandidates={setCandidates}
+                onApply={(cand) =>
+                  setC((prev) => ({
+                    ...prev,
+                    text: cand.text,
+                    replies: cand.first_reply
+                      ? [{ text: cand.first_reply, media: prev.replies[0]?.media ?? null }, ...prev.replies.slice(1)]
+                      : prev.replies,
+                    topicTag: prev.topicTag || cand.topic_tag || null,
+                    isAiLabel: true,
+                    generatorId: cand.meta.generatorId,
+                    aiMeta: { ...cand.meta, category: cand.category },
+                  }))
+                }
+              />
+            )}
             <StepWrite c={c} set={set} plan={plan} disclosures={disclosures} />
             <Checks plan={plan} similar={similar} />
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -263,13 +303,23 @@ function StepSetup({
   c,
   set,
   accounts,
+  generators,
+  ai,
+  persona,
+  onPersonaChange,
   onNext,
 }: {
   c: Compose;
   set: <K extends keyof Compose>(k: K, v: Compose[K]) => void;
   accounts: ComposerAccount[];
+  generators: ComposerGenerator[];
+  ai: AiStatus;
+  persona: PersonaInput;
+  onPersonaChange: (v: PersonaInput) => void;
   onNext: () => void;
 }) {
+  const account = accounts.find((a) => a.id === c.accountId);
+  const usable = generators.filter((g) => (c.kind === "product" ? g.kind === "product" || g.kind === "vision" : g.kind === "daily"));
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <Card>
@@ -300,9 +350,20 @@ function StepSetup({
               ))}
             </div>
           )}
-          <p className="mt-3 text-xs text-muted-foreground">페르소나(연령·성별·직업·말투)는 AI 단계(M5)에서 추가됩니다.</p>
         </CardContent>
       </Card>
+
+      {account && (
+        <Card>
+          <CardHeader>
+            <CardTitle>페르소나</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PersonaEditor accountId={account.id} username={account.username} value={persona} onChange={onPersonaChange} />
+            <p className="mt-2 text-xs text-muted-foreground">AI가 이 계정의 글을 쓸 때 참고합니다.</p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -322,14 +383,51 @@ function StepSetup({
         <CardHeader>
           <CardTitle>작성 방법</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Chip disabled title="M5 단계에서 추가됩니다">
-            AI로 만들기 <span className="text-xs text-muted-foreground">M5</span>
-          </Chip>
-          <Chip selected>직접 작성</Chip>
-          <Chip disabled title="M6 단계에서 추가됩니다">
-            글 창고에서 가져오기 <span className="text-xs text-muted-foreground">M6</span>
-          </Chip>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap gap-2">
+            <Chip selected={c.mode === "ai"} disabled={!ai.ready} onClick={() => set("mode", "ai")} title={ai.message ?? undefined}>
+              AI로 만들기
+            </Chip>
+            <Chip selected={c.mode === "manual"} onClick={() => set("mode", "manual")}>
+              직접 작성
+            </Chip>
+            <Chip disabled title="M6 단계에서 추가됩니다">
+              글 창고에서 가져오기 <span className="text-xs text-muted-foreground">M6</span>
+            </Chip>
+          </div>
+          {!ai.ready && ai.message && (
+            <p className="text-xs text-muted-foreground">
+              {ai.message}{" "}
+              <Link href="/settings?tab=ai" className="text-primary underline">
+                설정 &gt; AI
+              </Link>
+            </p>
+          )}
+          {c.mode === "ai" && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label>생성기</Label>
+                <NativeSelect value={c.generatorId ?? ""} onChange={(e) => set("generatorId", e.target.value || null)}>
+                  <option value="">{usable[0] ? `기본 (${usable[0].name})` : "기본"}</option>
+                  {usable.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                      {g.model ? ` · ${g.provider}:${g.model}` : ""}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>{c.kind === "product" ? "상품명·특징" : "주제"}</Label>
+                <Input
+                  value={c.aiTopic ?? ""}
+                  maxLength={1000}
+                  placeholder={c.kind === "product" ? "예) 무선 청소기, 1.2kg, 흡입력 좋음" : "비우면 주제 풀에서 랜덤"}
+                  onChange={(e) => set("aiTopic", e.target.value || null)}
+                />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

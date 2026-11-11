@@ -82,3 +82,68 @@ export async function recentTextsAction(accountId: string, excludePostId?: strin
     return fail(e);
   }
 }
+
+// ---------------------------------------------------------------- AI 모드
+
+const generateInput = z.object({
+  accountId: z.string().uuid(),
+  generatorId: z.string().uuid().nullable().optional(),
+  kind: z.enum(["general", "product"]),
+  topic: z.string().max(1000).nullable().optional(),
+  count: z.number().int().min(1).max(5).default(3),
+});
+
+export type GeneratedCandidate = {
+  text: string;
+  first_reply: string;
+  topic_tag: string;
+  category: string;
+  issues: string[];
+  meta: { generatorId: string; generatorName: string; topic: string; format: string; length: string; model: string; costUsd: number | null };
+};
+
+export async function generateAction(input: z.input<typeof generateInput>): Promise<Result<GeneratedCandidate[]>> {
+  try {
+    await requireSession();
+    const v = generateInput.parse(input);
+    const { generatePosts } = await import("@/lib/ai/generate");
+    const r = await generatePosts({ ...v, purpose: "compose" });
+    const meta = {
+      generatorId: r.meta.generatorId,
+      generatorName: r.meta.generatorName,
+      topic: r.meta.topic,
+      format: r.meta.format,
+      length: r.meta.length,
+      model: `${r.meta.model.provider}:${r.meta.model.model}`,
+      // 여러 개를 한 번에 만들었으니 글 하나당 비용으로 나눠 보여준다
+      costUsd: r.meta.costUsd === null ? null : r.meta.costUsd / Math.max(1, r.posts.length),
+    };
+    return { ok: true, data: r.posts.map((p) => ({ ...p, meta })) };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+const personaInput = z.object({
+  age_group: z.enum(["20s", "30s", "40s_early", "40s_late", "any"]).nullable(),
+  gender: z.enum(["male", "female", "any"]).nullable(),
+  job: z.enum(["office", "self_employed", "business", "homemaker", "any"]).nullable(),
+  tone: z.string().max(300).nullable(),
+});
+export type PersonaInput = z.infer<typeof personaInput>;
+
+export async function savePersonaAction(accountId: string, input: PersonaInput): Promise<Result> {
+  try {
+    await requireSession();
+    const p = personaInput.parse(input);
+    const { error } = await db()
+      .from("personas")
+      .upsert({ account_id: uuid.parse(accountId), ...p, tone: p.tone?.trim() || null }, { onConflict: "account_id" });
+    if (error) throw new Error(error.message);
+    revalidatePath("/compose");
+    revalidatePath("/settings");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return fail(e);
+  }
+}

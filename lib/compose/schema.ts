@@ -55,6 +55,13 @@ export const composeSchema = z.object({
   disclosureId: z.string().uuid().nullable().optional().transform((v) => v ?? null),
   disclosurePosition: z.enum(DISCLOSURE_POSITIONS).default("link_reply"),
   isAiLabel: z.boolean().default(false),
+  /** 작성 방법: 직접 작성 / AI */
+  mode: z.enum(["manual", "ai"]).default("manual"),
+  generatorId: z.string().uuid().nullable().optional().transform((v) => v ?? null),
+  /** AI 주제(상품이면 상품명·특징). 비우면 랜덤 */
+  aiTopic: z.string().max(1000).nullable().optional().transform((v) => v ?? null),
+  /** 적용한 AI 후보의 생성 정보(참고용) */
+  aiMeta: z.record(z.string(), z.unknown()).nullable().optional().transform((v) => v ?? null),
 });
 export type ComposeInput = z.input<typeof composeSchema>;
 export type Compose = z.output<typeof composeSchema>;
@@ -72,4 +79,8 @@ export const emptyCompose = (accountId = ""): Compose => ({
   disclosureId: null,
   disclosurePosition: "link_reply",
   isAiLabel: false,
+  mode: "manual",
+  generatorId: null,
+  aiTopic: null,
+  aiMeta: null,
 });
