@@ -112,7 +112,17 @@ export async function generatePosts(input: GenerateInput): Promise<GenerateResul
   let totalCost: number | null = 0;
 
   const call = async (n: number, extra?: string) => {
-    const prompt = fillTemplate(gen.user_prompt_template, { count: n, persona, topic, format, length: length.instruction, examples, recentPosts: recent.slice(0, 15), extra });
+    const imageNote = hasImages ? "첨부한 사진 속 상품의 생김새·색·크기감·쓰임새를 보고 구체적으로 반영해 주세요. 사진에 없는 기능은 지어내지 마세요." : undefined;
+    const prompt = fillTemplate(gen.user_prompt_template, {
+      count: n,
+      persona,
+      topic,
+      format,
+      length: length.instruction,
+      examples,
+      recentPosts: recent.slice(0, 15),
+      extra: [imageNote, extra].filter(Boolean).join("\n") || undefined,
+    });
     const res = await provider.generateJson({ model: model.model, system, prompt, images: input.images, schemaName: "threads_posts", schema: POSTS_SCHEMA });
     for (const k of Object.keys(usage) as (keyof Usage)[]) usage[k] += res.usage[k];
     const cost = costUsd(res.usage, ai.pricing[priceKey(model)]);

@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 // AI 생성(서버 액션)이 오래 걸릴 수 있다
 export const maxDuration = 120;
 
-export default async function ComposePage({ searchParams }: { searchParams: Promise<{ id?: string; account?: string }> }) {
-  const { id, account } = await searchParams;
+export default async function ComposePage({ searchParams }: { searchParams: Promise<{ id?: string; account?: string; bundle?: string }> }) {
+  const { id, account, bundle } = await searchParams;
   const [accRes, discRes, draftRes, settings, postRes, genRes, personaRes, aiSettings, poolRes] = await Promise.all([
     db().from("threads_accounts").select("id, username, profile_picture_url, status").neq("status", "disabled").order("created_at"),
     db().from("disclosures").select("id, name, text, match_domains, default_position, is_default").order("is_default", { ascending: false }).order("name"),
@@ -22,6 +22,7 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
       .from("posts")
       .select("id, text, updated_at, compose, threads_accounts(username)")
       .eq("status", "draft")
+      .is("campaign_id", null) // 농장이 자리만 잡아 둔 글은 빼고
       .order("updated_at", { ascending: false })
       .limit(50),
     getSettings(),
@@ -78,6 +79,28 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
     }
   }
   const editable = post && !loadError;
+
+  // 자료실 "글로 만들기": 묶음 사진을 붙이고 AI 모드(사진 보고 쓰기)로 시작
+  if (!post && bundle && /^[0-9a-f-]{36}$/.test(bundle)) {
+    const { data: b } = await db().from("asset_bundles").select("name, memo, assets(storage_path, media_type, width, height, sort_order)").eq("id", bundle).maybeSingle();
+    if (b) {
+      const bucket = process.env.STORAGE_BUCKET || "media";
+      const assets = ((b.assets ?? []) as { storage_path: string; media_type: "image" | "video"; width: number | null; height: number | null; sort_order: number }[]).sort((x, y) => x.sort_order - y.sort_order);
+      compose = {
+        ...compose,
+        kind: "product",
+        mode: ai.ready ? "ai" : "manual",
+        aiTopic: `${b.name}${b.memo ? `\n특징: ${b.memo}` : ""}`,
+        media: assets.slice(0, 20).map((a) => ({
+          storagePath: a.storage_path,
+          publicUrl: db().storage.from(bucket).getPublicUrl(a.storage_path).data.publicUrl,
+          mediaType: a.media_type,
+          width: a.width,
+          height: a.height,
+        })),
+      };
+    }
+  }
 
   return (
     <>

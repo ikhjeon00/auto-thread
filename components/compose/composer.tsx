@@ -522,7 +522,7 @@ export function StepWrite({
   plan: ReturnType<typeof buildPlan>;
   disclosures: ComposerDisclosure[];
   /** uploads: 1회용(발행 30일 뒤 삭제) / assets: 보관(창고·자료실) */
-  mediaFolder?: "uploads" | "assets";
+  mediaFolder?: "uploads" | "assets" | "products";
 }) {
   const hasMedia = c.media.length > 0;
   const mainCount = countThreadsChars(plan.mainText);

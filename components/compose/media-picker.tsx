@@ -7,6 +7,7 @@ import { MAX_MEDIA, type MediaItem } from "@/lib/compose/schema";
 import { prepareFile } from "@/lib/media/prepare";
 import { uploadPrepared } from "@/lib/media/upload";
 import { cn } from "@/lib/utils";
+import { AssetPicker } from "@/components/assets/asset-picker";
 
 type Uploading = { key: string; name: string; previewUrl: string | null };
 
@@ -21,13 +22,14 @@ export function MediaPicker({
   onChange: (v: MediaItem[]) => void;
   max?: number;
   compact?: boolean;
-  folder?: "uploads" | "assets";
+  folder?: "uploads" | "assets" | "products";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<Uploading[]>([]);
   const [messages, setMessages] = useState<{ level: "error" | "warn"; text: string }[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  const [picking, setPicking] = useState(false);
   const latest = useRef(value);
   latest.current = value;
 
@@ -83,9 +85,16 @@ export function MediaPicker({
           <ImagePlus /> {compact ? "사진·영상 붙이기" : "직접 추가"}
         </Button>
         {!compact && (
-          <Button type="button" variant="outline" size="sm" disabled title="자료실은 M7 단계에서 추가됩니다">
+          <Button type="button" variant="outline" size="sm" disabled={remaining <= 0} onClick={() => setPicking(true)}>
             <Images /> 자료실에서 고르기
           </Button>
+        )}
+        {picking && (
+          <AssetPicker
+            max={Math.max(0, remaining)}
+            onClose={() => setPicking(false)}
+            onPick={(items) => onChange([...latest.current, ...items.filter((m) => !latest.current.some((x) => x.storagePath === m.storagePath))].slice(0, max))}
+          />
         )}
         <span className="num text-xs text-muted-foreground">
           {value.length} / {max}

@@ -32,12 +32,21 @@ export function AiPanel({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState<number | null>(null);
-  const needTopic = c.kind === "product" && !c.aiTopic?.trim();
+  const needTopic = c.kind === "product" && !c.aiTopic?.trim() && !c.media.length;
+  const images = c.media.filter((m) => m.mediaType === "image").slice(0, 4);
+  const [useImages, setUseImages] = useState(true);
 
   const generate = () =>
     start(async () => {
       setError(null);
-      const r = await generateAction({ accountId: c.accountId, generatorId: c.generatorId, kind: c.kind, topic: c.aiTopic, count });
+      const r = await generateAction({
+        accountId: c.accountId,
+        generatorId: c.generatorId,
+        kind: c.kind,
+        topic: c.aiTopic,
+        count,
+        imageUrls: useImages && images.length ? images.map((m) => m.publicUrl) : undefined,
+      });
       if (r.ok) {
         setCandidates((prev) => [...r.data, ...prev]);
         setApplied((a) => (a === null ? null : a + r.data.length));
@@ -66,7 +75,13 @@ export function AiPanel({
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {needTopic && <p className="text-xs text-warning">상품 홍보글은 1단계에서 상품명·특징을 입력하세요.</p>}
+        {needTopic && <p className="text-xs text-warning">상품 홍보글은 1단계에서 상품명·특징을 입력하거나 사진을 첨부하세요.</p>}
+        {images.length > 0 && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={useImages} onChange={(e) => setUseImages(e.target.checked)} />
+            첨부한 사진 {images.length}장을 AI에게 보여 주고 쓰기 <span className="text-xs text-muted-foreground">(설정의 사진 이해 모델 사용)</span>
+          </label>
+        )}
         {error && <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p>}
         {!candidates.length && !pending && !error && (
           <p className="text-sm text-muted-foreground">

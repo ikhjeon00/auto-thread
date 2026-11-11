@@ -162,3 +162,34 @@ export async function saveGeneralSettings(input: GeneralInput): Promise<ActionRe
     return fail(e);
   }
 }
+
+// ---------------------------------------------------------------- 팔로워 구간별 권장 게시 수
+
+const tierInput = z
+  .array(
+    z.object({
+      min: z.coerce.number().int().min(0),
+      max: z.coerce.number().int().min(0).nullable(),
+      daily_posts: z.coerce.number().int().min(0).max(50),
+    }),
+  )
+  .min(1, "구간을 하나 이상 넣으세요.")
+  .max(20)
+  .refine((t) => t.every((x) => x.max === null || x.max >= x.min), { message: "각 구간의 끝은 시작보다 커야 합니다." })
+  .refine((t) => t.slice(1).every((x, i) => t[i].max !== null && x.min > (t[i].max as number)), { message: "구간이 겹치거나 순서가 맞지 않습니다(위에서부터 작은 수 → 큰 수, 마지막만 끝을 비울 수 있음)." });
+
+export async function saveFollowerTiersAction(tiers: z.input<typeof tierInput>): Promise<ActionResult> {
+  try {
+    await requireSession();
+    const value = tierInput.parse(tiers);
+    const { error } = await db().from("app_settings").upsert({ key: "follower_tiers", value }, { onConflict: "key" });
+    if (error) throw new Error(error.message);
+    revalidatePath("/settings");
+    revalidatePath("/farm/growth");
+    revalidatePath("/farm/monetize");
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof z.ZodError) return { ok: false, error: e.issues.map((i) => i.message).join(" / ") };
+    return fail(e);
+  }
+}

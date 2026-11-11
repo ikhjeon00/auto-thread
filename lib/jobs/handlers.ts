@@ -49,3 +49,6 @@ registerJob("pool_fill", async ({ job, progress }) => {
   }
   return { added: good.length, dropped: r.posts.length - good.length, costUsd: r.meta.costUsd, model: `${r.meta.model.provider}:${r.meta.model.model}` };
 });
+
+// 농장 만들기(시간 배치 + 내용 채우기)
+import "@/lib/farm/build";

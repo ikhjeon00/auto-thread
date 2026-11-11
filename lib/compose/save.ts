@@ -18,7 +18,8 @@ export async function loadDisclosure(id: string | null): Promise<DisclosureLite 
 
 export type SaveOptions = {
   postId?: string | null;
-  status: "draft" | "scheduled";
+  /** review: 농장 검토 모드(발행하지 않고 확인 대기) */
+  status: "draft" | "review" | "scheduled";
   scheduledAt?: Date | null;
 };
 
@@ -38,7 +39,7 @@ export async function savePost(raw: ComposeInput, opts: SaveOptions): Promise<{ 
     if (!opts.scheduledAt) throw new Error("발행 시간을 지정하세요.");
     const { data: acc } = await db().from("threads_accounts").select("status, username").eq("id", input.accountId).single();
     if (!acc) throw new Error("계정을 찾을 수 없습니다.");
-    if (acc.status !== "active") throw new Error(`@${acc.username} 계정은 지금 발행할 수 없는 상태입니다(${acc.status}).`);
+    if (opts.status === "scheduled" && acc.status !== "active") throw new Error(`@${acc.username} 계정은 지금 발행할 수 없는 상태입니다(${acc.status}).`);
   }
 
   const row = {

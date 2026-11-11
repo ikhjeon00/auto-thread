@@ -33,6 +33,11 @@ export function registerJob(type: string, handler: Handler) {
 
 export const MAX_JOB_ATTEMPTS = 3;
 
+/** 처리기가 돌려주면 "아직 남았음": 실패로 세지 않고 다음 실행에서 이어서 한다 */
+export class JobContinue {
+  constructor(public readonly note = "") {}
+}
+
 export async function enqueueJob(type: string, payload: Record<string, unknown>, total = 0): Promise<string> {
   const { data, error } = await db().from("jobs").insert({ type, payload, total, status: "queued" }).select("id").single();
   if (error) throw new Error(error.message);
@@ -62,6 +67,10 @@ export async function runJobs(deadline: number, limit = 2): Promise<{ claimed: n
           await db().from("jobs").update({ progress: done, ...(total !== undefined ? { total } : {}) }).eq("id", job.id);
         },
       });
+      if (result instanceof JobContinue) {
+        await db().from("jobs").update({ status: "queued", locked_until: null, run_after: new Date().toISOString(), error: null }).eq("id", job.id);
+        continue;
+      }
       await db().from("jobs").update({ status: "done", result: result ?? null, error: null, locked_until: null }).eq("id", job.id);
       r.done++;
     } catch (e) {

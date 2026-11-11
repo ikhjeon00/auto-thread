@@ -7,6 +7,7 @@ import { TesterGuide } from "@/components/settings/tester-guide";
 import { DisclosuresSection, type DisclosureView } from "@/components/settings/disclosures-section";
 import { GeneralSection } from "@/components/settings/general-section";
 import { PersonasSection } from "@/components/settings/personas-section";
+import { TiersSection } from "@/components/settings/tiers-section";
 import { AiSection } from "@/components/settings/ai-section";
 import { GeneratorsSection, type GeneratorView } from "@/components/settings/generators-section";
 import { FormatsSection, TopicsSection, type FormatView, type TopicView } from "@/components/settings/topics-section";
@@ -93,9 +94,10 @@ async function AccountsTab() {
 }
 
 async function ContentTab() {
-  const [discRes, settings] = await Promise.all([
+  const [discRes, settings, tierRes] = await Promise.all([
     db().from("disclosures").select("id, name, text, match_domains, is_default, default_position").order("name"),
     getSettings().catch(() => DEFAULT_SETTINGS),
+    db().from("app_settings").select("value").eq("key", "follower_tiers").maybeSingle(),
   ]);
   return (
     <>
@@ -111,6 +113,7 @@ async function ContentTab() {
           poolEmptyBehavior: settings.poolEmptyBehavior,
         }}
       />
+      <TiersSection initial={(tierRes.data?.value as { min: number; max: number | null; daily_posts: number }[] | undefined) ?? [{ min: 0, max: null, daily_posts: 3 }]} />
     </>
   );
 }

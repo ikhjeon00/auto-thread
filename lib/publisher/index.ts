@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db/admin";
 import { notify } from "@/lib/notify";
 import { markPoolItemUsed } from "@/lib/pool/pick";
+import { fillAtPublish } from "@/lib/farm/at-publish";
 import { accountToken, handleAuthError, type AccountRow } from "@/lib/threads/accounts";
 import {
   ThreadsApiError,
@@ -30,6 +31,8 @@ type PostRow = {
   id: string;
   account_id: string;
   pool_item_id: string | null;
+  campaign_id: string | null;
+  ai_meta: { farm?: { pickAtPublish?: boolean; type: "general" | "product" } } | null;
   status: string;
   text: string;
   link_url: string | null;
@@ -148,6 +151,17 @@ async function processPost(post: PostRow, gate: { publishedThisRun: boolean; sta
       const n = await publishReplies(post, account, token, deadline);
       result.repliesPublished += n;
       return;
+    }
+
+    // 농장의 "발행 직전 뽑기" 글: 지금 창고에서 뽑아 채운다
+    if (post.status === "scheduled" && !post.text && !post.pool_item_id && post.ai_meta?.farm?.pickAtPublish) {
+      const ok = await fillAtPublish(post);
+      if (!ok) {
+        result.failed++;
+        return;
+      }
+      const { data: fresh } = await db().from("posts").select("*").eq("id", post.id).single();
+      Object.assign(post, fresh);
     }
 
     if (post.status === "scheduled") {

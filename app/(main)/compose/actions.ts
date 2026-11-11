@@ -93,6 +93,8 @@ const generateInput = z.object({
   kind: z.enum(["general", "product"]),
   topic: z.string().max(1000).nullable().optional(),
   count: z.number().int().min(1).max(5).default(3),
+  /** 첨부 사진을 보고 쓰기(사진 이해 모델) */
+  imageUrls: z.array(z.string().url()).max(4).optional(),
 });
 
 export type GeneratedCandidate = {
@@ -109,7 +111,8 @@ export async function generateAction(input: z.input<typeof generateInput>): Prom
     await requireSession();
     const v = generateInput.parse(input);
     const { generatePosts } = await import("@/lib/ai/generate");
-    const r = await generatePosts({ ...v, purpose: "compose" });
+    const { imageUrls, ...rest } = v;
+    const r = await generatePosts({ ...rest, purpose: "compose", images: imageUrls?.length ? imageUrls.map((url) => ({ url })) : undefined });
     const meta = {
       generatorId: r.meta.generatorId,
       generatorName: r.meta.generatorName,
