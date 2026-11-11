@@ -11,7 +11,6 @@ import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
-import { parseCsv } from "@/lib/csv";
 import { formatKst } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import {
@@ -20,11 +19,11 @@ import {
   enqueueFillAction,
   getJobAction,
   importBookmarksAction,
-  importRowsAction,
   setItemsStatusAction,
   type JobStatus,
 } from "@/app/(main)/pools/actions";
 import { PoolForm, type PoolFormValue } from "./pool-form";
+import { CsvImport } from "./csv-import";
 
 export type PoolItemView = {
   id: string;
@@ -191,7 +190,7 @@ function FillPanel(p: Props) {
         </div>
         {tab === "ai" && <AiFill {...p} />}
         {tab === "manual" && <ManualFill poolId={p.poolId} />}
-        {tab === "csv" && <CsvFill poolId={p.poolId} />}
+        {tab === "csv" && <CsvImport poolId={p.poolId} />}
         {tab === "bookmark" && <BookmarkFill poolId={p.poolId} bookmarks={p.bookmarks} />}
       </CardContent>
     </Card>
@@ -305,80 +304,6 @@ function ManualFill({ poolId }: { poolId: string }) {
         </Link>
       </Button>
       <span className="text-sm text-muted-foreground">글 작성과 같은 화면에서 사진·영상, 댓글, 링크, 고지 문구까지 준비하고 미리보기로 확인합니다.</span>
-    </div>
-  );
-}
-
-function CsvFill({ poolId }: { poolId: string }) {
-  const router = useRouter();
-  const [rows, setRows] = useState<Record<string, string>[] | null>(null);
-  const [fileName, setFileName] = useState("");
-  const [approve, setApprove] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [pending, start] = useTransition();
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
-        첫 줄에 열 이름이 있어야 합니다: <code className="rounded bg-muted px-1">text</code>(필수), <code className="rounded bg-muted px-1">first_reply</code>,{" "}
-        <code className="rounded bg-muted px-1">topic_tag</code>, <code className="rounded bg-muted px-1">category</code>. 엑셀에서 &lsquo;CSV UTF-8&rsquo;로 저장하세요.
-      </p>
-      <input
-        type="file"
-        accept=".csv,text/csv"
-        className="text-sm"
-        onChange={async (e) => {
-          const f = e.target.files?.[0];
-          setMsg(null);
-          if (!f) return;
-          setFileName(f.name);
-          const { headers, rows } = parseCsv(await f.text());
-          if (!headers.includes("text")) {
-            setRows(null);
-            setMsg({ ok: false, text: `'text' 열이 없습니다. 지금 열: ${headers.join(", ") || "(없음)"}` });
-            return;
-          }
-          setRows(rows.filter((r) => r.text?.trim()));
-        }}
-      />
-      {rows && (
-        <>
-          <div className="rounded-md border bg-background p-3 text-sm">
-            <div className="mb-2 font-medium">
-              {fileName}: {rows.length}줄
-            </div>
-            <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto text-xs text-muted-foreground">
-              {rows.slice(0, 5).map((r, i) => (
-                <li key={i} className="truncate">
-                  {i + 1}. {r.text}
-                </li>
-              ))}
-              {rows.length > 5 && <li>… 외 {rows.length - 5}줄</li>}
-            </ul>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={approve} onChange={(e) => setApprove(e.target.checked)} />
-            바로 &lsquo;사용 가능&rsquo;으로 넣기 (끄면 &lsquo;검수 대기&rsquo;)
-          </label>
-          <div className="flex justify-end">
-            <Button
-              disabled={pending || !rows.length}
-              onClick={() =>
-                start(async () => {
-                  const r = await importRowsAction(poolId, rows, approve);
-                  setMsg(r.ok ? { ok: true, text: `${r.data.added}개를 가져왔습니다${r.data.skipped ? ` (형식 오류 ${r.data.skipped}개 제외)` : ""}.` } : { ok: false, text: r.error });
-                  if (r.ok) {
-                    setRows(null);
-                    router.refresh();
-                  }
-                })
-              }
-            >
-              {rows.length}개 가져오기
-            </Button>
-          </div>
-        </>
-      )}
-      {msg && <p className={msg.ok ? "text-sm text-success" : "text-sm text-destructive"}>{msg.text}</p>}
     </div>
   );
 }

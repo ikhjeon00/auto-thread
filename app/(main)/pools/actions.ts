@@ -7,7 +7,8 @@ import { requireSession } from "@/lib/auth/require";
 import { db } from "@/lib/db/admin";
 import { enqueueJob, runJobs } from "@/lib/jobs";
 import { buildPlan, hasErrors } from "@/lib/compose/plan";
-import { emptyCompose, poolContentSchema } from "@/lib/compose/schema";
+import { emptyCompose, mediaItemSchema, poolContentSchema, poolItemToContent } from "@/lib/compose/schema";
+import { CSV_MAX_IMAGES } from "@/lib/csv-images";
 import { loadDisclosure } from "@/lib/compose/save";
 import { getSettings } from "@/lib/settings";
 
@@ -123,11 +124,17 @@ export async function deleteItemsAction(poolId: string, ids: string[]): Promise<
 
 // ---------------------------------------------------------------- 채우기: CSV / 보석함 / AI
 
+
+
 const csvRow = z.object({
   text: z.string().trim().min(1).max(5000),
   first_reply: z.string().trim().max(5000).optional().default(""),
   topic_tag: z.string().trim().max(50).optional().default(""),
   category: z.string().trim().max(30).optional().default(""),
+  /** 본문 사진(브라우저가 먼저 올린 뒤의 정보), 최대 5장 */
+  media: z.array(mediaItemSchema).max(CSV_MAX_IMAGES).optional().default([]),
+  /** 첫 댓글 사진 1장 */
+  reply_media: mediaItemSchema.nullable().optional().default(null),
 });
 
 export async function importRowsAction(poolId: string, rows: unknown[], approve: boolean): Promise<Result<{ added: number; skipped: number }>> {
@@ -141,15 +148,28 @@ export async function importRowsAction(poolId: string, rows: unknown[], approve:
       const { error } = await db()
         .from("pool_items")
         .insert(
-          valid.slice(k, k + 500).map((r) => ({
-            pool_id: pid,
-            text: r.text,
-            first_reply: r.first_reply || null,
-            topic_tag: r.topic_tag.replace(/^#/, "") || null,
-            category: r.category || null,
-            status: approve ? "available" : "pending",
-            source: "csv",
-          })),
+          valid.slice(k, k + 500).map((r) => {
+            const topic = r.topic_tag.replace(/^#/, "") || null;
+            const hasMedia = r.media.length > 0 || !!r.reply_media;
+            return {
+              pool_id: pid,
+              text: r.text,
+              first_reply: r.first_reply || null,
+              topic_tag: topic,
+              category: r.category || null,
+              media: r.media,
+              // 사진이 있으면 글 작성 형태로도 저장(꺼낼 때 사진까지 그대로 들어가게)
+              compose: hasMedia
+                ? {
+                    ...poolItemToContent({ text: r.text, first_reply: null, topic_tag: topic }),
+                    media: r.media,
+                    replies: r.first_reply || r.reply_media ? [{ text: r.first_reply, media: r.reply_media }] : [],
+                  }
+                : null,
+              status: approve ? "available" : "pending",
+              source: "csv",
+            };
+          }),
         );
       if (error) throw new Error(error.message);
     }
