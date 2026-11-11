@@ -64,10 +64,10 @@ export function DashboardView({ accounts, groups, stats, today }: { accounts: Da
 
 // ------------------------------------------------------------------ 팔로워 추이
 
-function PeriodToggle({ value, onChange }: { value: 7 | 30; onChange: (v: 7 | 30) => void }) {
+function PeriodToggle({ value, onChange }: { value: 7 | 14 | 30; onChange: (v: 7 | 14 | 30) => void }) {
   return (
     <div className="flex rounded-md border bg-card p-0.5 text-xs">
-      {([7, 30] as const).map((d) => (
+      {([7, 14, 30] as const).map((d) => (
         <button key={d} type="button" onClick={() => onChange(d)} className={cn("rounded px-2.5 py-1", value === d ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
           {d}일
         </button>
@@ -98,7 +98,7 @@ function ChartTooltip({ active, payload, label, names }: { active?: boolean; pay
 }
 
 function FollowerTrend({ accounts, byAccount, today }: { accounts: DashAccount[]; byAccount: Map<string, Map<string, DashStat>>; today: string }) {
-  const [days, setDays] = useState<7 | 30>(7);
+  const [days, setDays] = useState<7 | 14 | 30>(7);
   // 처음엔 팔로워 많은 순 8개. 선택된 계정은 빈 칸(slot) 중 가장 앞 색을 받고, 선택이 바뀌어도 남은 계정 색은 그대로
   const [slots, setSlots] = useState<(string | null)[]>(() => {
     const top = [...accounts].sort((a, b) => (b.follower_count ?? 0) - (a.follower_count ?? 0)).slice(0, MAX_LINES).map((a) => a.id);
@@ -169,7 +169,7 @@ function FollowerTrend({ accounts, byAccount, today }: { accounts: DashAccount[]
 
 function Reactions({ accounts, byAccount, today }: { accounts: DashAccount[]; byAccount: Map<string, Map<string, DashStat>>; today: string }) {
   const [metric, setMetric] = useState<Metric>("views");
-  const [days, setDays] = useState<7 | 30>(7);
+  const [days, setDays] = useState<7 | 14 | 30>(7);
   const dates = Array.from({ length: days }, (_, i) => addDays(today, i - days + 1));
   const rows = accounts
     .map((a) => ({ name: `@${a.username}`, value: dates.reduce((s, d) => s + (byAccount.get(a.id)?.get(d)?.[metric] ?? 0), 0) }))
