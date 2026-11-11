@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
 import { db } from "@/lib/db/admin";
 import { publishTextNow } from "@/lib/threads/accounts";
+import { saveSettings } from "@/lib/settings";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -86,6 +87,77 @@ export async function deleteGroup(id: string): Promise<ActionResult> {
     revalidatePath("/settings");
     return { ok: true };
   } catch (e) {
+    return fail(e);
+  }
+}
+
+// ---------------------------------------------------------------- 제휴 고지 문구
+
+const disclosureInput = z.object({
+  name: z.string().trim().min(1, "이름을 입력하세요.").max(40),
+  text: z.string().trim().min(1, "문구를 입력하세요.").max(300),
+  match_domains: z
+    .array(z.string().trim().toLowerCase().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/, "도메인 형식이 올바르지 않습니다(예: link.coupang.com)."))
+    .max(20),
+  is_default: z.boolean(),
+  default_position: z.enum(["body", "link_reply", "separate_reply"]),
+});
+export type DisclosureInput = z.input<typeof disclosureInput>;
+
+export async function saveDisclosure(id: string | null, input: DisclosureInput): Promise<ActionResult> {
+  try {
+    await requireSession();
+    const data = disclosureInput.parse(input);
+    if (data.is_default) {
+      // 기본값은 하나만
+      await db().from("disclosures").update({ is_default: false }).eq("is_default", true);
+    }
+    const q = id ? db().from("disclosures").update(data).eq("id", uuid.parse(id)) : db().from("disclosures").insert(data);
+    const { error } = await q;
+    if (error) throw new Error(error.code === "23505" ? "같은 이름의 고지 문구가 있습니다." : error.message);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteDisclosure(id: string): Promise<ActionResult> {
+  try {
+    await requireSession();
+    const { error } = await db().from("disclosures").delete().eq("id", uuid.parse(id));
+    if (error) throw new Error(error.message);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ---------------------------------------------------------------- 일반 설정
+
+const hm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "시간 형식은 HH:MM 입니다.");
+const generalInput = z
+  .object({
+    activeHours: z.object({ start: hm, end: hm }),
+    bannedWords: z.array(z.string().trim().min(1).max(50)).max(200),
+    globalDailyLimit: z.coerce.number().int().min(1).max(5000),
+    defaultDailyPostLimit: z.coerce.number().int().min(0).max(250),
+    minGapMinutes: z.coerce.number().int().min(0).max(240),
+    sameAccountGapMinutes: z.coerce.number().int().min(0).max(1440),
+  })
+  .refine((v) => v.activeHours.start < v.activeHours.end, { message: "활동 시작 시간이 끝 시간보다 빨라야 합니다." });
+export type GeneralInput = z.input<typeof generalInput>;
+
+export async function saveGeneralSettings(input: GeneralInput): Promise<ActionResult> {
+  try {
+    await requireSession();
+    await saveSettings(generalInput.parse(input));
+    revalidatePath("/settings");
+    revalidatePath("/compose");
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof z.ZodError) return { ok: false, error: e.issues.map((i) => i.message).join(" / ") };
     return fail(e);
   }
 }

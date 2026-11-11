@@ -45,8 +45,10 @@ revoke all on function public.call_cron(text) from public, anon, authenticated;
 -- 매일 04:00 KST (= 19:00 UTC): 장기 토큰 갱신
 select cron.schedule('refresh-tokens', '0 19 * * *', $$select public.call_cron('refresh-tokens')$$);
 
+-- 1분마다: 발행 상태 머신 진행 (M3)
+select cron.schedule('publish', '* * * * *', $$select public.call_cron('publish')$$);
+
 -- 이후 단계에서 추가될 작업 (지금은 주석)
--- M3: select cron.schedule('publish',          '* * * * *',     $$select public.call_cron('publish')$$);
 -- M7: select cron.schedule('jobs',             '* * * * *',     $$select public.call_cron('jobs')$$);
 -- M8: select cron.schedule('sync-stats',       '10 15 * * *',   $$select public.call_cron('sync-stats')$$);   -- 00:10 KST
 -- M8: select cron.schedule('sync-stats-3h',    '0 */3 * * *',   $$select public.call_cron('sync-stats')$$);

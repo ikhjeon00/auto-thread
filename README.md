@@ -8,7 +8,7 @@
 |---|---|---|
 | M1 | 프로젝트 기반, 디자인 시스템, 사이드바, 비밀번호 로그인, DB 스키마·seed | ✅ |
 | M2 | Threads 계정 연결(OAuth), 토큰 암호화·갱신, 텍스트 글 테스트 발행 | ✅ |
-| M3 | 글 작성 3단계, 미디어, 댓글, 링크, 고지, 예약, publish 크론 | |
+| M3 | 글 작성 3단계, 미디어, 댓글, 링크, 고지, 예약, publish 크론 | 구현 완료 · 실계정 확인 대기 |
 | M4 | 예약한 글, 내가 올린 글, 활동 알림 | |
 | M5 | AI 생성 | |
 | M6 | 글 창고 | |
@@ -32,6 +32,8 @@
    1. `supabase/migrations/0001_init.sql` — 테이블, 인덱스, RLS, `media` 버킷
    2. `supabase/seed.sql` — 기본 설정, 쿠팡 파트너스 고지 문구, 기본 생성기, 글 형식 5개, 주제 50개
       (여러 번 실행해도 중복되지 않는다)
+   3. `supabase/migrations/0002_publish.sql` — 발행 상태 머신용 컬럼과 `claim_due_posts` 함수(M3)
+      (다시 실행해도 안전하다)
 3. **Table Editor**에서 테이블 26개가 생겼고, **Storage**에 `media` 버킷(Public)이 생겼는지 확인한다.
 4. **Project Settings → API** 에서 다음 값을 복사해 둔다.
    - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
@@ -43,6 +45,8 @@
 > Free 플랜의 업로드 파일 크기 상한은 50MB다. 큰 영상(최대 1GB)을 올리려면 Pro 플랜에서 Storage → Settings의 상한을 올려야 한다.
 
 ## 1-1. 주기 작업 등록 (pg_cron)
+
+현재 등록되는 작업: `refresh-tokens`(매일 04:00 KST), `publish`(1분마다).
 
 1. Supabase → **Database → Extensions** 에서 `pg_cron`, `pg_net`을 켠다(SQL에서도 켜지만 권한 문제로 실패하면 여기서 켠다).
 2. `supabase/cron.sql`을 SQL Editor에 붙여 넣고, `<APP_URL>`(배포 주소, 끝에 `/` 없이)과 `<CRON_SECRET>`(Vercel의 같은 값)을 바꾼 뒤 Run.
@@ -125,6 +129,25 @@ http://localhost:3000 접속 → `APP_PASSWORD`로 로그인.
 4. Deploy. 배포 주소(예: `https://auto-thread-xxx.vercel.app`)를 기록해 둔다. M2의 `THREADS_REDIRECT_URI`와 M3의 `cron.sql`에 쓴다.
 5. Vercel Cron은 쓰지 않는다. 주기 작업은 Supabase pg_cron이 호출한다.
 
+## 발행 동작 (M3)
+
+- 글 작성(`/compose`): 설정 → 작성 → 발행. 작성 중에는 오른쪽(모바일은 하단 탭)에 Threads 모양 미리보기가 나온다.
+- 사진·영상은 브라우저에서 바로 Supabase Storage(`media/uploads/…`)로 올라간다. HEIC·WebP는 JPEG로 바뀌고 가로 1440px로 줄어든다.
+- 미디어가 있으면 링크는 자동으로 첫 댓글로 간다(Threads의 링크 미리보기는 텍스트 글에서만 동작).
+- 고지 문구 위치: 본문 끝 / 링크 댓글 / 별도 댓글. 본문에 넣으면 고지 문구까지 500자에 포함해 검사한다.
+- 1분마다 `publish` 작업이 예약 시간이 된 글을 잠그고(중복 발행 방지) 컨테이너 생성 → 상태 확인 → 발행 → 댓글 순으로 진행한다.
+  같은 회차에 여러 글이 있으면 30초~2분 간격으로 나눠 올린다.
+- 실패하면 1분 → 5분 뒤 재시도하고, 3번째 실패하면 `failed`로 바꾸고 활동 알림을 남긴다. 토큰 오류는 바로 실패 + 재연결 필요 표시.
+- 직접 올린 첨부는 발행 30일 뒤 삭제 대상으로 표시된다(실제 삭제는 M9 cleanup).
+
+## 테스트
+
+```bash
+npm test
+```
+
+발행 상태 머신은 메모리 DB와 가짜 Threads API로 시나리오 테스트를 한다(`tests/publisher.test.ts`).
+
 ## 보안 구조
 
 - 로그인: `APP_PASSWORD` 비교 후 HMAC 서명 httpOnly 쿠키(30일) 발급. `middleware.ts`가 `/login`, `/api/cron/*` 외 모든 경로를 보호한다.
@@ -142,6 +165,12 @@ lib/auth                  세션 쿠키 서명/검증
 lib/crypto                토큰 암호화(AES-256-GCM)
 lib/threads               Threads API 클라이언트, 계정·토큰 관리, 글자 수 계산
 lib/notify                활동 알림 저장
+lib/compose               작성 내용 검증(zod)·발행 형태 변환·저장
+lib/publisher             발행 상태 머신(/api/cron/publish)
+lib/scheduler             예약 충돌 검사, 가까운 빈 시간 찾기
+lib/media                 브라우저 이미지 변환·업로드
+components/compose        글 작성 화면
+components/preview        모바일 미리보기
 components/settings       설정 화면 구성요소
 tests                     단위 테스트(vitest): npm test
 lib/db                    Supabase service role 클라이언트

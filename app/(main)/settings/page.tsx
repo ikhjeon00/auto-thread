@@ -3,6 +3,9 @@ import { PageHeader } from "@/components/layout/page-header";
 import { AccountsSection } from "@/components/settings/accounts-section";
 import { GroupsSection } from "@/components/settings/groups-section";
 import { TesterGuide } from "@/components/settings/tester-guide";
+import { DisclosuresSection, type DisclosureView } from "@/components/settings/disclosures-section";
+import { GeneralSection } from "@/components/settings/general-section";
+import { DEFAULT_SETTINGS, getSettings } from "@/lib/settings";
 import type { AccountView, GroupView } from "@/components/settings/types";
 import { db } from "@/lib/db/admin";
 
@@ -17,12 +20,14 @@ export default async function SettingsPage({
   searchParams: Promise<{ connected?: string; error?: string }>;
 }) {
   const { connected, error } = await searchParams;
-  const [accRes, groupRes] = await Promise.all([
+  const [accRes, groupRes, discRes, settings] = await Promise.all([
     db()
       .from("threads_accounts")
       .select("id, username, profile_picture_url, status, group_id, daily_post_limit, token_expires_at, token_refreshed_at, follower_count")
       .order("created_at"),
     db().from("account_groups").select("id, name, color").order("name"),
+    db().from("disclosures").select("id, name, text, match_domains, is_default, default_position").order("name"),
+    getSettings().catch(() => DEFAULT_SETTINGS),
   ]);
   const loadError = accRes.error?.message ?? groupRes.error?.message;
 
@@ -43,6 +48,17 @@ export default async function SettingsPage({
           <GroupsSection groups={(groupRes.data ?? []) as GroupView[]} />
           <TesterGuide />
         </div>
+        <DisclosuresSection items={(discRes.data ?? []) as DisclosureView[]} />
+        <GeneralSection
+          initial={{
+            activeHours: settings.activeHours,
+            bannedWords: settings.bannedWords,
+            globalDailyLimit: settings.globalDailyLimit,
+            defaultDailyPostLimit: settings.defaultDailyPostLimit,
+            minGapMinutes: settings.minGapMinutes,
+            sameAccountGapMinutes: settings.sameAccountGapMinutes,
+          }}
+        />
       </div>
     </>
   );
