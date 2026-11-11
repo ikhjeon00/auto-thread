@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
 import { db } from "@/lib/db/admin";
 import { checkSchedule, type ScheduleCheck } from "@/lib/scheduler/check";
+import { releasePoolItem } from "@/lib/pool/pick";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string; conflict?: ScheduleCheck };
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof Error ? e.message : String(e) });
@@ -54,9 +55,11 @@ export async function cancelAction(id: string): Promise<Result> {
       .update({ status: "cancelled", next_attempt_at: null })
       .eq("id", uuid.parse(id))
       .in("status", ["scheduled", "failed"])
-      .select("id");
+      .select("id, pool_item_id");
     if (error) throw new Error(error.message);
     if (!data?.length) throw new Error("발행 중이거나 이미 처리된 글은 취소할 수 없습니다.");
+    // 창고에서 가져온 글이면 다시 쓸 수 있게 돌려놓는다
+    if (data[0].pool_item_id) await releasePoolItem(data[0].pool_item_id as string);
     refresh();
     return { ok: true, data: undefined };
   } catch (e) {

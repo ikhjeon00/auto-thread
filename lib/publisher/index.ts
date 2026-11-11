@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db/admin";
 import { notify } from "@/lib/notify";
+import { markPoolItemUsed } from "@/lib/pool/pick";
 import { accountToken, handleAuthError, type AccountRow } from "@/lib/threads/accounts";
 import {
   ThreadsApiError,
@@ -28,6 +29,7 @@ const MEDIA_RETENTION_DAYS = 30;
 type PostRow = {
   id: string;
   account_id: string;
+  pool_item_id: string | null;
   status: string;
   text: string;
   link_url: string | null;
@@ -221,6 +223,9 @@ async function processPost(post: PostRow, gate: { publishedThisRun: boolean; sta
       .is("delete_after", null)
       .like("storage_path", "uploads/%");
     await log(post.id, "published", post.attempt_count + 1, mediaId);
+    if (post.pool_item_id) {
+      await markPoolItemUsed(post.pool_item_id, account.id, post.id).catch((e) => console.error("[publish] 창고 사용 기록 실패", e));
+    }
     await notify("info", "publish_success", `@${account.username} 글을 발행했습니다.`, media?.permalink ?? "/published");
     result.published++;
 

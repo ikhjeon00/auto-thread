@@ -23,8 +23,9 @@ begin
 end;
 $$;
 
--- 공통 호출 함수: /api/cron/<path> 를 Bearer 인증으로 POST
-create or replace function public.call_cron(path text)
+-- 공통 호출 함수: /api/cron/<path> 를 Bearer 인증으로 POST (timeout_ms: 응답 대기 시간)
+drop function if exists public.call_cron(text);
+create or replace function public.call_cron(path text, timeout_ms int default 55000)
 returns bigint
 language sql
 security definer
@@ -37,10 +38,10 @@ as $$
       'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
     ),
     body := '{}'::jsonb,
-    timeout_milliseconds := 55000
+    timeout_milliseconds := timeout_ms
   );
 $$;
-revoke all on function public.call_cron(text) from public, anon, authenticated;
+revoke all on function public.call_cron(text, int) from public, anon, authenticated;
 
 -- 매일 04:00 KST (= 19:00 UTC): 장기 토큰 갱신
 select cron.schedule('refresh-tokens', '0 19 * * *', $$select public.call_cron('refresh-tokens')$$);
@@ -48,11 +49,15 @@ select cron.schedule('refresh-tokens', '0 19 * * *', $$select public.call_cron('
 -- 1분마다: 발행 상태 머신 진행 (M3)
 select cron.schedule('publish', '* * * * *', $$select public.call_cron('publish')$$);
 
+-- 1분마다: jobs 큐(AI 일괄 생성, 농장 배치). 오래 걸릴 수 있어 응답을 5분까지 기다린다 (M6)
+select cron.schedule('jobs', '* * * * *', $$select public.call_cron('jobs', 300000)$$);
+
+-- 매일 02:00 KST (= 17:00 UTC): 창고 재고 부족 알림, 자동 보충, 오래된 배정 풀기 (M6)
+select cron.schedule('pool-maintenance', '0 17 * * *', $$select public.call_cron('pool-maintenance')$$);
+
 -- 이후 단계에서 추가될 작업 (지금은 주석)
--- M7: select cron.schedule('jobs',             '* * * * *',     $$select public.call_cron('jobs')$$);
 -- M8: select cron.schedule('sync-stats',       '10 15 * * *',   $$select public.call_cron('sync-stats')$$);   -- 00:10 KST
 -- M8: select cron.schedule('sync-stats-3h',    '0 */3 * * *',   $$select public.call_cron('sync-stats')$$);
--- M6: select cron.schedule('pool-maintenance', '0 17 * * *',    $$select public.call_cron('pool-maintenance')$$); -- 02:00 KST
 -- M9: select cron.schedule('cleanup',          '0 20 * * *',    $$select public.call_cron('cleanup')$$);    -- 05:00 KST
 
 -- 확인용:

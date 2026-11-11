@@ -145,6 +145,7 @@ const generalInput = z
     defaultDailyPostLimit: z.coerce.number().int().min(0).max(250),
     minGapMinutes: z.coerce.number().int().min(0).max(240),
     sameAccountGapMinutes: z.coerce.number().int().min(0).max(1440),
+    poolEmptyBehavior: z.enum(["skip", "ai_generate"]),
   })
   .refine((v) => v.activeHours.start < v.activeHours.end, { message: "활동 시작 시간이 끝 시간보다 빨라야 합니다." });
 export type GeneralInput = z.input<typeof generalInput>;

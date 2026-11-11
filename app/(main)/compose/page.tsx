@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { Composer, type AiStatus, type ComposerAccount, type ComposerDisclosure, type ComposerGenerator } from "@/components/compose/composer";
+import { Composer, type AiStatus, type ComposerAccount, type ComposerDisclosure, type ComposerGenerator, type ComposerPool } from "@/components/compose/composer";
 import type { PersonaInput } from "./actions";
 import { getAiSettings, keyStatuses } from "@/lib/ai/config";
 import type { Provider } from "@/lib/ai/types";
@@ -15,7 +15,7 @@ export const maxDuration = 120;
 
 export default async function ComposePage({ searchParams }: { searchParams: Promise<{ id?: string; account?: string }> }) {
   const { id, account } = await searchParams;
-  const [accRes, discRes, draftRes, settings, postRes, genRes, personaRes, aiSettings] = await Promise.all([
+  const [accRes, discRes, draftRes, settings, postRes, genRes, personaRes, aiSettings, poolRes] = await Promise.all([
     db().from("threads_accounts").select("id, username, profile_picture_url, status").neq("status", "disabled").order("created_at"),
     db().from("disclosures").select("id, name, text, match_domains, default_position, is_default").order("is_default", { ascending: false }).order("name"),
     db()
@@ -31,7 +31,13 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
     db().from("generators").select("id, name, kind, provider, model").eq("is_active", true).order("created_at"),
     db().from("personas").select("account_id, age_group, gender, job, tone"),
     getAiSettings().catch(() => null),
+    db().from("content_pools").select("id, name, pool_accounts(account_id)").order("name"),
   ]);
+  const pools: ComposerPool[] = ((poolRes.data ?? []) as unknown as { id: string; name: string; pool_accounts: { account_id: string }[] }[]).map((p) => ({
+    id: p.id,
+    name: p.name,
+    accountIds: p.pool_accounts.map((a) => a.account_id),
+  }));
   const keys = await keyStatuses();
   const keyConfigured = (p: Provider) => !!keys[p].source;
 
@@ -83,6 +89,7 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
         disclosures={(discRes.data ?? []) as ComposerDisclosure[]}
         bannedWords={settings.bannedWords}
         generators={generators}
+        pools={pools}
         personas={personas}
         ai={ai}
         drafts={drafts}

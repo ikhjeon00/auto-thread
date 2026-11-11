@@ -10,8 +10,8 @@
 | M2 | Threads 계정 연결(OAuth), 토큰 암호화·갱신, 텍스트 글 테스트 발행 | ✅ |
 | M3 | 글 작성 3단계, 미디어, 댓글, 링크, 고지, 예약, publish 크론 | ✅ |
 | M4 | 예약한 글, 내가 올린 글, 활동 알림 | ✅ |
-| M5 | AI 생성 (OpenAI / Gemini) | 구현 완료 · 실사용 확인 대기 |
-| M6 | 글 창고 | |
+| M5 | AI 생성 (OpenAI / Gemini) | ✅ |
+| M6 | 글 창고 | 구현 완료 · 실사용 확인 대기 |
 | M7 | 농장, 자료실 | |
 | M8 | 대시보드 통계 | |
 | M9 | 보석함, 정리, 마무리 | |
@@ -37,6 +37,7 @@
    4. `supabase/migrations/0003_product_disclosure.sql` — 상품 홍보글 고지 문구 위치(첫 댓글 맨 앞) 허용
    5. `supabase/migrations/0004_reply_media.sql` — 댓글에 사진·영상 1개 첨부
    6. `supabase/migrations/0005_ai.sql` — AI 회사·모델 선택, 상품 홍보글 생성기
+   7. `supabase/migrations/0006_pools.sql` — 창고 배정 정보, jobs 큐 잠금 함수, `call_cron` 대기 시간 인자
 3. **Table Editor**에서 테이블 26개가 생겼고, **Storage**에 `media` 버킷(Public)이 생겼는지 확인한다.
 4. **Project Settings → API** 에서 다음 값을 복사해 둔다.
    - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
@@ -49,7 +50,7 @@
 
 ## 1-1. 주기 작업 등록 (pg_cron)
 
-현재 등록되는 작업: `refresh-tokens`(매일 04:00 KST), `publish`(1분마다).
+현재 등록되는 작업: `refresh-tokens`(매일 04:00 KST), `publish`(1분마다), `jobs`(1분마다, 응답 5분까지 대기), `pool-maintenance`(매일 02:00 KST).
 
 1. Supabase → **Database → Extensions** 에서 `pg_cron`, `pg_net`을 켠다(SQL에서도 켜지만 권한 문제로 실패하면 여기서 켠다).
 2. `supabase/cron.sql`을 SQL Editor에 붙여 넣고, `<APP_URL>`(배포 주소, 끝에 `/` 없이)과 `<CRON_SECRET>`(Vercel의 같은 값)을 바꾼 뒤 Run.
@@ -172,6 +173,21 @@ http://localhost:3000 접속 → `APP_PASSWORD`로 로그인.
 - 호출마다 토큰 수와 비용을 `generation_logs` 에 남긴다. 실패하면 활동에 알림.
 - 고정된 시스템 프롬프트를 맨 앞에 두어 두 회사의 자동 프롬프트 캐시가 잘 맞도록 했다(별도 설정 없음).
 
+## 글 창고 (M6)
+
+- `/pools`: 창고 목록과 재고(「남은 글 N개 · 약 N일 분량」, 기준 일수보다 적으면 주황색). 하루 소비량은 이 창고를 쓰는 진행 중 캠페인의 하루 게시 수 합 → 없으면 최근 7일 평균 사용량 → 없으면 연결 계정 수(하루 1개)로 계산한다.
+- `/pools/[id]`: 창고 설정(이름, 설명, 연결 계정, 페르소나 필터, 재고 부족 기준, 재사용 금지 기간, 자동 보충과 생성기), 글 채우기 4가지, 글 목록(상태 필터, 검색, 선택 후 승인·보관·검수 대기로·삭제, 펼쳐서 수정).
+  - AI 일괄 생성: 1회 호출로 최대 20개. jobs 큐로 처리하고 진행률을 화면에서 보여 준다(화면을 떠나도 계속). 주제를 비우면 주제 풀에서 여러 개를 뽑아 글마다 다르게 쓰게 한다. 검사를 통과한 글만 넣는다.
+  - 직접 작성(바로 사용 가능), CSV 가져오기(`text`, `first_reply`, `topic_tag`, `category` 열), 보석함에서 옮기기.
+- 랜덤 선택(`lib/pool/select.ts`, 단위 테스트 있음)
+  - 후보: 계정에 연결된 창고의 사용 가능 글 중 창고 페르소나 필터·글의 persona_tags 가 계정 페르소나와 맞는 것.
+  - 제외: 다른 계정이 이미 쓴 글, 재사용 금지 기간 안의 글(비어 있으면 한 번 쓴 글은 다시 안 씀), 이 계정 직전 글과 같은 분류.
+  - 가중치(weight) 랜덤. 배정은 "지금도 사용 가능일 때만 예약됨으로 바꾸기"(조건부 업데이트)라 동시에 같은 글을 두 곳에 주지 않는다.
+  - 발행되면 사용 기록을 남기고, 재사용 금지 기간이 없으면 사용 완료·있으면 다시 사용 가능(기간 동안은 규칙이 막음). 예약을 취소하면 창고로 돌아간다.
+  - 맞는 글이 없으면 설정(글 설정 > 일반 설정)에 따라 건너뛰기 또는 AI 즉석 생성. 둘 다 활동 알림.
+- 글 작성 1단계 「글 창고에서 가져오기」 → 2단계 「랜덤으로 뽑기 / 다른 글 뽑기」.
+- 매일 02:00 `pool-maintenance`: 재고 부족 알림, 자동 보충(생성기로 20개, 바로 사용 가능), 48시간 넘게 쓰이지 않은 배정 풀기.
+
 ## 테스트
 
 ```bash
@@ -200,6 +216,8 @@ lib/notify                활동 알림 저장
 lib/ai                    AI 공통 형태, 회사별 구현(openai/gemini), 프롬프트, 검사, 생성
 lib/compose               작성 내용 검증(zod)·발행 형태 변환·저장
 lib/publisher             발행 상태 머신(/api/cron/publish)
+lib/pool                  창고 선택 규칙(select), 배정·사용 기록·재고(pick), 매일 정리(maintenance)
+lib/jobs                  jobs 큐와 작업 처리기
 lib/scheduler             예약 충돌 검사, 가까운 빈 시간 찾기
 lib/media                 브라우저 이미지 변환·업로드
 components/compose        글 작성 화면

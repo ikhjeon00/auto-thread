@@ -9,10 +9,14 @@ import { AiError, type ModelRef, type Usage } from "./types";
 import { generatedSchema, validateGenerated, type GeneratedPost } from "./validate";
 
 export type GenerateInput = {
-  accountId: string;
+  /** 계정 기준 생성이면 그 계정의 페르소나·최근 글을 쓴다 */
+  accountId?: string | null;
+  /** 계정 없이(창고 채우기 등) 만들 때 쓸 페르소나와 겹치면 안 되는 글 */
+  persona?: PersonaLite | null;
+  avoidTexts?: string[];
   generatorId?: string | null;
   kind: "general" | "product";
-  /** 사용자가 정한 주제(상품이면 상품명·특징). 비우면 주제 풀에서 랜덤 */
+  /** 사용자가 정한 주제(상품이면 상품명·특징). 비우면 주제 풀에서 랜덤. 여러 글을 한 번에 만들 때는 글마다 다른 주제를 쓰라고 요청한다 */
   topic?: string | null;
   count: number;
   purpose: "compose" | "pool" | "farm";
@@ -57,14 +61,17 @@ async function loadGenerator(id: string | null | undefined, kind: GenerateInput[
   return data[0] as GeneratorRow;
 }
 
-async function pickTopic(userTopic: string | null | undefined): Promise<string> {
+async function pickTopic(userTopic: string | null | undefined, count: number): Promise<string> {
   if (userTopic?.trim()) return userTopic.trim();
-  // 최근에 쓰지 않은 주제 20개 중 랜덤
-  const { data } = await db().from("topics").select("id, category, topic, keywords").order("last_used_at", { ascending: true, nullsFirst: true }).limit(20);
-  const t = pickRandom((data ?? []) as { id: string; category: string; topic: string; keywords: string[] }[]);
-  if (!t) return "일상 속 소소한 이야기";
-  await db().from("topics").update({ last_used_at: new Date().toISOString() }).eq("id", t.id);
-  return `${t.category} — ${t.topic}${t.keywords?.length ? ` (키워드: ${t.keywords.join(", ")})` : ""}`;
+  // 최근에 쓰지 않은 주제 중 랜덤. 여러 개를 만들 때는 주제도 여러 개를 주고 글마다 다르게 쓰게 한다
+  const want = count >= 5 ? Math.min(10, Math.ceil(count / 2)) : 1;
+  const { data } = await db().from("topics").select("id, category, topic, keywords").order("last_used_at", { ascending: true, nullsFirst: true }).limit(Math.max(20, want * 3));
+  const picked = sample((data ?? []) as { id: string; category: string; topic: string; keywords: string[] }[], want);
+  if (!picked.length) return "일상 속 소소한 이야기";
+  const now = new Date().toISOString();
+  await db().from("topics").update({ last_used_at: now }).in("id", picked.map((t) => t.id));
+  const line = (t: (typeof picked)[number]) => `${t.category} — ${t.topic}${t.keywords?.length ? ` (키워드: ${t.keywords.join(", ")})` : ""}`;
+  return picked.length === 1 ? line(picked[0]) : `아래 주제들 중에서 글마다 하나씩 골라 다양하게 써 주세요.\n${picked.map((t) => `- ${line(t)}`).join("\n")}`;
 }
 
 export async function generatePosts(input: GenerateInput): Promise<GenerateResult> {
@@ -74,34 +81,38 @@ export async function generatePosts(input: GenerateInput): Promise<GenerateResul
     loadGenerator(input.generatorId, input.kind, hasImages),
     getAiSettings(),
     getSettings(),
-    db().from("personas").select("age_group, gender, job, tone").eq("account_id", input.accountId).maybeSingle(),
+    input.accountId
+      ? db().from("personas").select("age_group, gender, job, tone").eq("account_id", input.accountId).maybeSingle()
+      : Promise.resolve({ data: input.persona ?? null }),
     db().from("post_formats").select("name, instruction").eq("is_active", true),
     db().from("bookmarks").select("text").order("created_at", { ascending: false }).limit(50),
-    db()
-      .from("posts")
-      .select("text")
-      .eq("account_id", input.accountId)
-      .in("status", ["scheduled", "processing", "published"])
-      .order("created_at", { ascending: false })
-      .limit(15),
+    input.accountId
+      ? db()
+          .from("posts")
+          .select("text")
+          .eq("account_id", input.accountId)
+          .in("status", ["scheduled", "processing", "published"])
+          .order("created_at", { ascending: false })
+          .limit(15)
+      : Promise.resolve({ data: (input.avoidTexts ?? []).map((text) => ({ text })) }),
   ]);
 
   const model = resolveModel(gen, hasImages ? ai.defaults.vision : ai.defaults.text);
   const provider = await getProvider(model.provider);
-  const topic = await pickTopic(input.topic);
+  const topic = await pickTopic(input.topic, count);
   const fmt = pickRandom((formatsRes.data ?? []) as { name: string; instruction: string }[]);
   const format = fmt ? `${fmt.name}: ${fmt.instruction}` : "자유 형식";
   const length = pickRandom([...LENGTHS])!;
   const examples = sample(((bookmarksRes.data ?? []) as { text: string }[]).map((b) => b.text), Math.max(0, Math.min(5, gen.example_count)));
-  const recent = ((recentRes.data ?? []) as { text: string }[]).map((r) => r.text).filter(Boolean);
-  const persona = (personaRes.data as PersonaLite | null) ?? null;
+  const recent = [...((recentRes.data ?? []) as { text: string }[]).map((r) => r.text), ...(input.accountId ? (input.avoidTexts ?? []) : [])].filter(Boolean);
+  const persona = (personaRes.data as PersonaLite | null) ?? input.persona ?? null;
   const system = `${gen.system_prompt.trim()}\n${COMMON_RULES}`;
 
   const usage: Usage = { input: 0, output: 0, cached: 0, reasoning: 0 };
   let totalCost: number | null = 0;
 
   const call = async (n: number, extra?: string) => {
-    const prompt = fillTemplate(gen.user_prompt_template, { count: n, persona, topic, format, length: length.instruction, examples, recentPosts: recent, extra });
+    const prompt = fillTemplate(gen.user_prompt_template, { count: n, persona, topic, format, length: length.instruction, examples, recentPosts: recent.slice(0, 15), extra });
     const res = await provider.generateJson({ model: model.model, system, prompt, images: input.images, schemaName: "threads_posts", schema: POSTS_SCHEMA });
     for (const k of Object.keys(usage) as (keyof Usage)[]) usage[k] += res.usage[k];
     const cost = costUsd(res.usage, ai.pricing[priceKey(model)]);

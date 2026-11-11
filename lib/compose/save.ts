@@ -54,6 +54,7 @@ export async function savePost(raw: ComposeInput, opts: SaveOptions): Promise<{ 
     is_ai_label: input.isAiLabel,
     generator_id: input.mode === "ai" ? input.generatorId : null,
     ai_meta: input.mode === "ai" ? input.aiMeta : null,
+    pool_item_id: input.mode === "pool" ? input.poolItemId : null,
     scheduled_at: opts.scheduledAt ? opts.scheduledAt.toISOString() : null,
     compose: input,
     attempt_count: 0,

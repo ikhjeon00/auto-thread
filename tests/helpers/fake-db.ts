@@ -15,6 +15,17 @@ export class FakeDb {
     return new Query(this, t);
   }
   async rpc(name: string, args: Record<string, number>) {
+    if (name === "claim_jobs") {
+      const now = Date.now();
+      const due = this.rows("jobs")
+        .filter((j) => (j.status === "queued" || j.status === "running") && Date.parse(String(j.run_after ?? new Date(0).toISOString())) <= now && (!j.locked_until || Date.parse(String(j.locked_until)) < now))
+        .slice(0, args.p_limit ?? 3);
+      for (const j of due) {
+        j.status = "running";
+        j.locked_until = new Date(now + (args.p_lease_seconds ?? 300) * 1000).toISOString();
+      }
+      return { data: due.map((j) => ({ attempts: 0, progress: 0, total: 0, ...j })), error: null };
+    }
     if (name !== "claim_due_posts") return { data: null, error: { message: `unknown rpc ${name}` } };
     const now = Date.now();
     const t = (v: unknown) => (v ? Date.parse(String(v)) : null);
@@ -83,6 +94,15 @@ class Query implements PromiseLike<{ data: unknown; error: unknown; count?: numb
   }
   in(c: string, vs: unknown[]) {
     this.filters.push((r) => vs.includes(r[c]));
+    return this;
+  }
+  not(c: string, op: string, v: unknown) {
+    if (op !== "is") throw new Error(`fake not(${op}) 미지원`);
+    this.filters.push((r) => (r[c] ?? null) !== v);
+    return this;
+  }
+  contains(c: string, v: Record<string, unknown>) {
+    this.filters.push((r) => Object.entries(v).every(([k, x]) => (r[c] as Record<string, unknown> | undefined)?.[k] === x));
     return this;
   }
   is(c: string, v: unknown) {

@@ -211,6 +211,17 @@ describe("publisher (M3 완료 기준)", () => {
     expect(fdb.rows("threads_accounts").find((a) => a.id === ACC)!.status).toBe("needs_reconnect");
   });
 
+  it("창고에서 가져온 글은 발행되면 사용 완료 + 사용 기록", async () => {
+    const ITEM = "44444444-4444-4444-8444-444444444444";
+    fdb.rows("pool_items").push({ id: ITEM, pool_id: "P", status: "reserved", reserved_account_id: ACC, content_pools: { reuse_cooldown_days: null } });
+    const { postId } = await savePost({ accountId: ACC, text: "창고 글", mode: "pool", poolItemId: ITEM }, { status: "scheduled", scheduledAt: new Date(Date.now() - 1000) });
+    expect(post(postId).pool_item_id).toBe(ITEM);
+    await runPublishBatch(deadline());
+    expect(post(postId).status).toBe("published");
+    expect(fdb.rows("pool_items")[0]).toMatchObject({ status: "used", reserved_account_id: null });
+    expect(fdb.rows("pool_item_usage")[0]).toMatchObject({ item_id: ITEM, account_id: ACC, post_id: postId });
+  });
+
   it("재연결이 필요한 계정의 예약 글은 실패 처리한다", async () => {
     fdb.rows("threads_accounts").find((a) => a.id === ACC)!.status = "needs_reconnect";
     fdb.rows("posts").push({ id: "p-x", account_id: ACC, status: "scheduled", text: "x", scheduled_at: past(), attempt_count: 0 });

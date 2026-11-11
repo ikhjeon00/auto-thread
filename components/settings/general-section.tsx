@@ -36,6 +36,7 @@ export function GeneralSection({ initial }: { initial: GeneralInput }) {
                 defaultDailyPostLimit: Number(v.defaultDailyPostLimit),
                 minGapMinutes: Number(v.minGapMinutes),
                 sameAccountGapMinutes: Number(v.sameAccountGapMinutes),
+                poolEmptyBehavior: v.poolEmptyBehavior,
               });
               setMsg(r.ok ? { ok: true, text: "저장했습니다." } : { ok: false, text: r.error });
             });
@@ -66,6 +67,18 @@ export function GeneralSection({ initial }: { initial: GeneralInput }) {
               <Label htmlFor="g-def">새 계정 기본 하루 최대 게시 수</Label>
               <Input id="g-def" type="number" min={0} max={250} className="num w-32" {...num("defaultDailyPostLimit")} />
             </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="g-empty">글 창고에 맞는 글이 없을 때</Label>
+            <select
+              id="g-empty"
+              className="h-9 w-72 rounded-md border border-input bg-card px-3 text-sm"
+              value={v.poolEmptyBehavior}
+              onChange={(e) => setV({ ...v, poolEmptyBehavior: e.target.value as "skip" | "ai_generate" })}
+            >
+              <option value="skip">건너뛰기 (알림만 남김)</option>
+              <option value="ai_generate">AI로 즉석 생성해서 쓰기 (알림 남김)</option>
+            </select>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="g-banned">금칙어 (쉼표 또는 줄바꿈으로 구분)</Label>

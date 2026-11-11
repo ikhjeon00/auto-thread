@@ -30,6 +30,7 @@ import {
 import type { ScheduleCheck } from "@/lib/scheduler/check";
 import { MediaPicker } from "./media-picker";
 import { AiPanel } from "./ai-panel";
+import { PoolPanel } from "./pool-panel";
 import { EMPTY_PERSONA, PersonaEditor } from "@/components/persona/persona-editor";
 import type { GeneratedCandidate, PersonaInput } from "@/app/(main)/compose/actions";
 import { DraftsMenu, type DraftItem } from "./drafts-menu";
@@ -40,7 +41,10 @@ export type ComposerDisclosure = DisclosureLite & { is_default: boolean };
 export type ComposerGenerator = { id: string; name: string; kind: string; provider: string | null; model: string | null };
 export type AiStatus = { ready: boolean; message: string | null };
 
+export type ComposerPool = { id: string; name: string; accountIds: string[] };
+
 type Props = {
+  pools: ComposerPool[];
   generators: ComposerGenerator[];
   personas: Record<string, PersonaInput>;
   ai: AiStatus;
@@ -67,7 +71,8 @@ const kstInputToIso = (v: string) => fromZonedTime(`${v}:00`, APP_TZ).toISOStrin
 const isoToKstInput = (iso: string) => formatInTimeZone(new Date(iso), APP_TZ, "yyyy-MM-dd'T'HH:mm");
 const fmtKst = (iso: string) => formatInTimeZone(new Date(iso), APP_TZ, "M월 d일 HH:mm");
 
-export function Composer({ accounts, disclosures, bannedWords, drafts, initial, generators, personas: initialPersonas, ai }: Props) {
+export function Composer({ accounts, disclosures, bannedWords, drafts, initial, generators, personas: initialPersonas, ai, pools }: Props) {
+  const [poolId, setPoolId] = useState<string | null>(null);
   const router = useRouter();
   const [step, setStep] = useState(initial.postId && initial.compose.accountId ? 1 : 0);
   const [c, setC] = useState<Compose>(initial.compose);
@@ -210,6 +215,9 @@ export function Composer({ accounts, disclosures, bannedWords, drafts, initial, 
           set={set}
           accounts={accounts}
           generators={generators}
+          pools={pools}
+          poolId={poolId}
+          setPoolId={setPoolId}
           ai={ai}
           persona={personas[c.accountId] ?? EMPTY_PERSONA}
           onPersonaChange={(v) => setPersonas((p) => ({ ...p, [c.accountId]: v }))}
@@ -236,6 +244,23 @@ export function Composer({ accounts, disclosures, bannedWords, drafts, initial, 
                     isAiLabel: true,
                     generatorId: cand.meta.generatorId,
                     aiMeta: { ...cand.meta, category: cand.category },
+                  }))
+                }
+              />
+            )}
+            {c.mode === "pool" && (
+              <PoolPanel
+                c={c}
+                poolId={poolId}
+                onPick={(pick) =>
+                  setC((prev) => ({
+                    ...prev,
+                    text: pick.text,
+                    replies: pick.first_reply
+                      ? [{ text: pick.first_reply, media: prev.replies[0]?.media ?? null }, ...prev.replies.slice(1)]
+                      : prev.replies,
+                    topicTag: pick.topic_tag || prev.topicTag,
+                    poolItemId: pick.id,
                   }))
                 }
               />
@@ -304,6 +329,9 @@ function StepSetup({
   set,
   accounts,
   generators,
+  pools,
+  poolId,
+  setPoolId,
   ai,
   persona,
   onPersonaChange,
@@ -313,6 +341,9 @@ function StepSetup({
   set: <K extends keyof Compose>(k: K, v: Compose[K]) => void;
   accounts: ComposerAccount[];
   generators: ComposerGenerator[];
+  pools: ComposerPool[];
+  poolId: string | null;
+  setPoolId: (v: string | null) => void;
   ai: AiStatus;
   persona: PersonaInput;
   onPersonaChange: (v: PersonaInput) => void;
@@ -320,6 +351,7 @@ function StepSetup({
 }) {
   const account = accounts.find((a) => a.id === c.accountId);
   const usable = generators.filter((g) => (c.kind === "product" ? g.kind === "product" || g.kind === "vision" : g.kind === "daily"));
+  const accountPools = pools.filter((p) => p.accountIds.includes(c.accountId));
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <Card>
@@ -391,8 +423,8 @@ function StepSetup({
             <Chip selected={c.mode === "manual"} onClick={() => set("mode", "manual")}>
               직접 작성
             </Chip>
-            <Chip disabled title="M6 단계에서 추가됩니다">
-              글 창고에서 가져오기 <span className="text-xs text-muted-foreground">M6</span>
+            <Chip selected={c.mode === "pool"} disabled={!accountPools.length} onClick={() => set("mode", "pool")} title={accountPools.length ? undefined : "이 계정에 연결된 창고가 없습니다"}>
+              글 창고에서 가져오기
             </Chip>
           </div>
           {!ai.ready && ai.message && (
@@ -402,6 +434,19 @@ function StepSetup({
                 설정 &gt; AI
               </Link>
             </p>
+          )}
+          {c.mode === "pool" && (
+            <div className="flex max-w-sm flex-col gap-1.5">
+              <Label>창고</Label>
+              <NativeSelect value={poolId ?? ""} onChange={(e) => setPoolId(e.target.value || null)}>
+                <option value="">연결된 창고 전체에서</option>
+                {accountPools.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
           )}
           {c.mode === "ai" && (
             <div className="grid gap-3 sm:grid-cols-2">

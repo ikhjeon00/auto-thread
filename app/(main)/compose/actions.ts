@@ -7,6 +7,7 @@ import { db } from "@/lib/db/admin";
 import { savePost } from "@/lib/compose/save";
 import type { ComposeInput } from "@/lib/compose/schema";
 import { checkSchedule, type ScheduleCheck } from "@/lib/scheduler/check";
+import { pickOrGenerate, releasePoolItem } from "@/lib/pool/pick";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof Error ? e.message : String(e) });
@@ -54,8 +55,9 @@ export async function scheduleAction(
 export async function deleteDraftAction(postId: string): Promise<Result> {
   try {
     await requireSession();
-    const { error } = await db().from("posts").delete().eq("id", uuid.parse(postId)).eq("status", "draft");
+    const { data, error } = await db().from("posts").delete().eq("id", uuid.parse(postId)).eq("status", "draft").select("pool_item_id");
     if (error) throw new Error(error.message);
+    if (data?.[0]?.pool_item_id) await releasePoolItem(data[0].pool_item_id as string);
     revalidatePath("/compose");
     return { ok: true, data: undefined };
   } catch (e) {
@@ -142,6 +144,36 @@ export async function savePersonaAction(accountId: string, input: PersonaInput):
     if (error) throw new Error(error.message);
     revalidatePath("/compose");
     revalidatePath("/settings");
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ---------------------------------------------------------------- 글 창고에서 가져오기
+
+export type PoolPick = { id: string; poolName: string; text: string; first_reply: string | null; topic_tag: string | null; category: string | null };
+
+/** 계정에 맞는 창고 글을 랜덤으로 하나 뽑아 배정한다. 이전에 뽑은 글이 있으면 돌려놓는다 */
+export async function pickFromPoolAction(accountId: string, opts: { poolId?: string | null; previousItemId?: string | null }): Promise<Result<PoolPick>> {
+  try {
+    await requireSession();
+    const acc = uuid.parse(accountId);
+    const prev = opts.previousItemId ? uuid.parse(opts.previousItemId) : null;
+    const r = await pickOrGenerate(acc, { poolId: opts.poolId ?? null, excludeIds: prev ? [prev] : [] });
+    if (prev) await releasePoolItem(prev);
+    if (!r.item) throw new Error(r.reason);
+    const { id, poolName, text, first_reply, topic_tag, category } = r.item;
+    return { ok: true, data: { id, poolName, text, first_reply, topic_tag, category } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function releasePoolPickAction(itemId: string): Promise<Result> {
+  try {
+    await requireSession();
+    await releasePoolItem(uuid.parse(itemId));
     return { ok: true, data: undefined };
   } catch (e) {
     return fail(e);

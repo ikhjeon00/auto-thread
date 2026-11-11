@@ -108,6 +108,7 @@ async function ContentTab() {
           defaultDailyPostLimit: settings.defaultDailyPostLimit,
           minGapMinutes: settings.minGapMinutes,
           sameAccountGapMinutes: settings.sameAccountGapMinutes,
+          poolEmptyBehavior: settings.poolEmptyBehavior,
         }}
       />
     </>
