@@ -213,3 +213,44 @@ export async function getPublishingLimit(userId: string, token: string): Promise
   });
   return res.data?.[0] ?? null;
 }
+
+// ---------------------------------------------------------------- 인사이트
+
+type InsightEntry = {
+  name: string;
+  period?: string;
+  values?: { value: number; end_time?: string }[];
+  total_value?: { value: number };
+  link_total_values?: { value: number; link_url?: string }[];
+};
+
+/** 응답 한 항목을 숫자 하나로: total_value → values 합 → link_total_values 합 */
+export function insightValue(e: InsightEntry | undefined): number {
+  if (!e) return 0;
+  if (e.total_value && typeof e.total_value.value === "number") return e.total_value.value;
+  if (e.values?.length) return e.values.reduce((s, v) => s + (Number(v.value) || 0), 0);
+  if (e.link_total_values?.length) return e.link_total_values.reduce((s, v) => s + (Number(v.value) || 0), 0);
+  return 0;
+}
+
+/** 계정 인사이트(/threads_insights). views 는 '프로필 조회수'(문서 기준) */
+export async function getUserInsights(
+  userId: string,
+  token: string,
+  metrics: string[],
+  range?: { since: number; until: number },
+): Promise<Record<string, number>> {
+  const res = await get<{ data: InsightEntry[] }>(`${THREADS_API}/${userId}/threads_insights`, {
+    metric: metrics.join(","),
+    access_token: token,
+    ...(range ? { since: range.since, until: range.until } : {}),
+  });
+  return Object.fromEntries(metrics.map((m) => [m, insightValue(res.data?.find((d) => d.name === m))]));
+}
+
+/** 게시물 인사이트(/{media-id}/insights) */
+export async function getMediaInsights(mediaId: string, token: string): Promise<Record<string, number>> {
+  const metrics = ["views", "likes", "replies", "reposts", "quotes", "shares"];
+  const res = await get<{ data: InsightEntry[] }>(`${THREADS_API}/${mediaId}/insights`, { metric: metrics.join(","), access_token: token });
+  return Object.fromEntries(metrics.map((m) => [m, insightValue(res.data?.find((d) => d.name === m))]));
+}

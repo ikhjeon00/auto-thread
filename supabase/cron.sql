@@ -55,9 +55,11 @@ select cron.schedule('jobs', '* * * * *', $$select public.call_cron('jobs', 3000
 -- 매일 02:00 KST (= 17:00 UTC): 창고 재고 부족 알림, 자동 보충, 오래된 배정 풀기 (M6)
 select cron.schedule('pool-maintenance', '0 17 * * *', $$select public.call_cron('pool-maintenance')$$);
 
+-- 통계 수집: 매일 00:10 KST(= 15:10 UTC) + 3시간마다 (M8)
+select cron.schedule('sync-stats', '10 15 * * *', $$select public.call_cron('sync-stats')$$);
+select cron.schedule('sync-stats-3h', '40 */3 * * *', $$select public.call_cron('sync-stats')$$);
+
 -- 이후 단계에서 추가될 작업 (지금은 주석)
--- M8: select cron.schedule('sync-stats',       '10 15 * * *',   $$select public.call_cron('sync-stats')$$);   -- 00:10 KST
--- M8: select cron.schedule('sync-stats-3h',    '0 */3 * * *',   $$select public.call_cron('sync-stats')$$);
 -- M9: select cron.schedule('cleanup',          '0 20 * * *',    $$select public.call_cron('cleanup')$$);    -- 05:00 KST
 
 -- 확인용:
