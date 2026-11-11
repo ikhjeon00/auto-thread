@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { BatchView, type BatchPost } from "@/components/farm/batch-view";
+import { DeleteBatchButton } from "@/components/farm/delete-batch-button";
 import { addDays } from "@/lib/calendar";
 import { db } from "@/lib/db/admin";
 import type { FarmConfig } from "@/lib/farm/types";
@@ -81,6 +82,7 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
         <ChevronLeft className="size-4" /> {c0.kind === "monetize" ? "수익화 농장" : "계정 키우기 농장"}
       </Link>
       <PageHeader
+        actions={<DeleteBatchButton batchId={id} redirectTo={back} />}
         title={`${c0.start_date} ~ ${addDays(c0.start_date, c0.days - 1)}`}
         description={`${campaigns.map((c) => `@${c.threads_accounts?.username}`).join(", ")} · ${c0.mode === "review" ? "검토 모드" : "자동 모드"} · ${c0.active_start.slice(0, 5)}~${c0.active_end.slice(0, 5)}`}
       />

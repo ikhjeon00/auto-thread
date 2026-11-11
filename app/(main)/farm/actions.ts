@@ -332,3 +332,70 @@ function toBundleView(b: BundleRow): BundleView {
       .map((a) => ({ storagePath: a.storage_path, publicUrl: publicUrl(a.storage_path), mediaType: a.media_type, width: a.width, height: a.height })),
   };
 }
+
+// ---------------------------------------------------------------- 농장 삭제
+
+export type BatchDeleteInfo = { unpublished: Record<string, number>; published: number; processing: number };
+
+/** 삭제 전 확인 창에 보여 줄 숫자 */
+export async function batchDeleteInfoAction(batchId: string): Promise<Result<BatchDeleteInfo>> {
+  try {
+    await requireSession();
+    const ids = await batchCampaignIds(batchId);
+    const info: BatchDeleteInfo = { unpublished: {}, published: 0, processing: 0 };
+    if (ids.length) {
+      const { data } = await db().from("posts").select("status").in("campaign_id", ids).limit(50000);
+      for (const p of (data ?? []) as { status: string }[]) {
+        if (p.status === "published") info.published++;
+        else if (p.status === "processing") info.processing++;
+        else info.unpublished[p.status] = (info.unpublished[p.status] ?? 0) + 1;
+      }
+    }
+    return { ok: true, data: info };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/**
+ * 농장 삭제: 농장(캠페인)과 만들기 작업, 아직 발행되지 않은 글을 지운다(창고 글은 되돌림).
+ * 이미 발행된 글은 '내가 올린 글'에 남기고 농장 연결만 끊는다. 발행 중인 글이 있으면 막는다.
+ */
+export async function deleteBatchAction(batchId: string): Promise<Result<{ deleted: number; kept: number }>> {
+  try {
+    await requireSession();
+    const bid = uuid.parse(batchId);
+    const { data: camps } = await db().from("campaigns").select("id, job_id").eq("batch_id", bid);
+    const ids = ((camps ?? []) as { id: string }[]).map((c) => c.id);
+    if (!ids.length) throw new Error("농장을 찾을 수 없습니다.");
+
+    const { count: processing } = await db().from("posts").select("id", { count: "exact", head: true }).in("campaign_id", ids).eq("status", "processing");
+    if (processing) throw new Error(`지금 발행 중인 글이 ${processing}개 있습니다. 1~2분 뒤 다시 시도하세요.`);
+
+    // 만들기 작업을 먼저 멈춘다(도중에 새 글을 만들지 않게)
+    const jobIds = [...new Set(((camps ?? []) as { job_id: string | null }[]).map((c) => c.job_id).filter(Boolean) as string[])];
+    if (jobIds.length) await db().from("jobs").update({ status: "failed", error: "농장 삭제됨", locked_until: null }).in("id", jobIds).in("status", ["queued", "running"]);
+
+    // 발행 안 된 글: 창고 글 되돌리고 삭제
+    const { data: unpublished } = await db().from("posts").select("id, pool_item_id").in("campaign_id", ids).neq("status", "published").limit(50000);
+    const rows = (unpublished ?? []) as { id: string; pool_item_id: string | null }[];
+    for (const r of rows) if (r.pool_item_id) await releasePoolItem(r.pool_item_id);
+    for (let k = 0; k < rows.length; k += 500) {
+      const { error } = await db().from("posts").delete().in("id", rows.slice(k, k + 500).map((r) => r.id)).neq("status", "published");
+      if (error) throw new Error(error.message);
+    }
+
+    // 발행된 글은 남기고 연결만 끊는다
+    const { data: kept } = await db().from("posts").update({ campaign_id: null }).in("campaign_id", ids).select("id");
+
+    const { error } = await db().from("campaigns").delete().in("id", ids);
+    if (error) throw new Error(error.message);
+    if (jobIds.length) await db().from("jobs").delete().in("id", jobIds);
+
+    refresh();
+    revalidatePath("/", "layout");
+    return { ok: true, data: { deleted: rows.length, kept: kept?.length ?? 0 } };
+  } catch (e) {
+    return fail(e);
+  }
+}

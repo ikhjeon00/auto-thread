@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { addDays } from "@/lib/calendar";
 import { formatKst } from "@/lib/time";
 import type { BatchSummary } from "@/lib/farm/page-data";
+import { DeleteBatchButton } from "./delete-batch-button";
 
 const LABEL: Record<string, string> = { review: "검토 대기", scheduled: "예약", published: "발행됨", failed: "실패", cancelled: "취소", draft: "만드는 중", processing: "발행 중" };
 
@@ -23,8 +24,8 @@ export function BatchList({ batches }: { batches: BatchSummary[] }) {
               const building = b.job && (b.job.status === "queued" || b.job.status === "running");
               const cancelled = b.status === "cancelled";
               return (
-                <li key={b.batchId}>
-                  <Link href={`/farm/batch/${b.batchId}`} className="flex items-center gap-3 px-5 py-3 hover:bg-accent/50">
+                <li key={b.batchId} className="flex items-center hover:bg-accent/50">
+                  <Link href={`/farm/batch/${b.batchId}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-5">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5 text-sm">
                         <span className="num font-medium">
@@ -51,6 +52,9 @@ export function BatchList({ batches }: { batches: BatchSummary[] }) {
                     </div>
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </Link>
+                  <div className="px-3">
+                    <DeleteBatchButton batchId={b.batchId} compact />
+                  </div>
                 </li>
               );
             })}

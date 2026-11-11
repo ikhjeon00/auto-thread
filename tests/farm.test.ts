@@ -6,6 +6,9 @@ import type { JsonRequest } from "@/lib/ai/types";
 
 let fdb: FakeDb;
 vi.mock("@/lib/db/admin", () => ({ db: () => fdb }));
+vi.mock("@/lib/auth/require", () => ({ requireSession: async () => {} }));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+vi.mock("next/server", () => ({ after: () => {} }));
 process.env.TOKEN_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
 const { encryptToken } = await import("@/lib/crypto/token");
@@ -185,5 +188,40 @@ describe("창고 발행 직전 뽑기", () => {
     expect(after.text).toBe("창고에서 뽑은 글");
     expect(api.created((p) => p.text === "창고 댓글")).toHaveLength(1);
     expect(fdb.rows("pool_items")[0].status).toBe("used");
+  });
+});
+
+describe("농장 삭제", () => {
+  it("발행 안 된 글은 지우고(창고 글 반환), 발행된 글은 남기고 연결만 끊는다", async () => {
+    const { deleteBatchAction } = await import("@/app/(main)/farm/actions");
+    const BATCH = "99999999-9999-4999-8999-999999999999";
+    fdb.rows("jobs").push({ id: "job-1", status: "done" });
+    fdb.rows("campaigns").push({ id: "c1", batch_id: BATCH, job_id: "job-1" });
+    fdb.rows("pool_items").push({ id: "item-1", status: "reserved", reserved_account_id: A });
+    fdb.rows("posts").push(
+      { id: "p1", campaign_id: "c1", status: "published" },
+      { id: "p2", campaign_id: "c1", status: "scheduled", pool_item_id: "item-1" },
+      { id: "p3", campaign_id: "c1", status: "review" },
+      { id: "p4", campaign_id: "other", status: "scheduled" },
+    );
+    const r = await deleteBatchAction(BATCH);
+    expect(r).toEqual({ ok: true, data: { deleted: 2, kept: 1 } });
+    expect(fdb.rows("posts").map((p) => [p.id, p.campaign_id])).toEqual([
+      ["p1", null],
+      ["p4", "other"],
+    ]);
+    expect(fdb.rows("campaigns")).toHaveLength(0);
+    expect(fdb.rows("jobs")).toHaveLength(0);
+    expect(fdb.rows("pool_items")[0].status).toBe("available");
+  });
+
+  it("발행 중인 글이 있으면 막는다", async () => {
+    const { deleteBatchAction } = await import("@/app/(main)/farm/actions");
+    const BATCH = "99999999-9999-4999-8999-999999999998";
+    fdb.rows("campaigns").push({ id: "c1", batch_id: BATCH, job_id: null });
+    fdb.rows("posts").push({ id: "p1", campaign_id: "c1", status: "processing" });
+    const r = await deleteBatchAction(BATCH);
+    expect(r.ok).toBe(false);
+    expect(fdb.rows("campaigns")).toHaveLength(1);
   });
 });
