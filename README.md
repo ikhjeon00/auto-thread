@@ -7,7 +7,7 @@
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | M1 | 프로젝트 기반, 디자인 시스템, 사이드바, 비밀번호 로그인, DB 스키마·seed | ✅ |
-| M2 | Threads 계정 연결(OAuth), 토큰 암호화·갱신, 텍스트 글 테스트 발행 | ⏳ |
+| M2 | Threads 계정 연결(OAuth), 토큰 암호화·갱신, 텍스트 글 테스트 발행 | 구현 완료 · 실계정 확인 대기 |
 | M3 | 글 작성 3단계, 미디어, 댓글, 링크, 고지, 예약, publish 크론 | |
 | M4 | 예약한 글, 내가 올린 글, 활동 알림 | |
 | M5 | AI 생성 | |
@@ -42,7 +42,33 @@
 >
 > Free 플랜의 업로드 파일 크기 상한은 50MB다. 큰 영상(최대 1GB)을 올리려면 Pro 플랜에서 Storage → Settings의 상한을 올려야 한다.
 
-주기 작업(pg_cron) 등록 SQL `supabase/cron.sql`은 M3에서 추가된다.
+## 1-1. 주기 작업 등록 (pg_cron)
+
+1. Supabase → **Database → Extensions** 에서 `pg_cron`, `pg_net`을 켠다(SQL에서도 켜지만 권한 문제로 실패하면 여기서 켠다).
+2. `supabase/cron.sql`을 SQL Editor에 붙여 넣고, `<APP_URL>`(배포 주소, 끝에 `/` 없이)과 `<CRON_SECRET>`(Vercel의 같은 값)을 바꾼 뒤 Run.
+3. 확인: `select jobname, schedule, active from cron.job;`
+4. 단계가 진행되면 cron.sql의 주석 처리된 작업이 하나씩 열린다. 파일을 다시 실행하면 된다(같은 이름은 덮어씀).
+
+비밀값은 Supabase Vault(`app_url`, `cron_secret`)에 저장된다. `CRON_SECRET`을 바꾸면 Vercel과 cron.sql 둘 다 다시 맞춘다.
+
+## 1-2. Threads 앱 설정 (Meta)
+
+1. https://developers.facebook.com/apps → **앱 만들기** → 사용 사례에서 **Threads API 액세스**를 고른다.
+2. **사용 사례 → Threads API → 맞춤 설정(Customize)**
+   - 권한: `threads_basic`, `threads_content_publish`, `threads_manage_insights`, `threads_manage_replies` 추가
+   - **설정(Settings)**: 리디렉션 콜백 URL에 `https://<배포주소>/api/threads/oauth/callback` 입력 후 저장
+     (제거 콜백·삭제 콜백 URL도 필수 입력이면 같은 주소를 넣어도 된다)
+3. **앱 설정 → 기본 설정**에서 **Threads 앱 ID**와 **Threads 앱 시크릿**을 복사한다.
+   앱 ID·시크릿이 두 쌍 보이면 반드시 "Threads"가 붙은 쪽을 쓴다.
+4. **앱 역할 → 역할 → 사람 추가 → Threads 테스터**로 연결할 계정을 초대하고,
+   각 계정에서 Threads **설정 → 계정 → 웹사이트 권한 → 초대**에서 수락한다.
+5. Vercel 환경변수에 `THREADS_APP_ID`, `THREADS_APP_SECRET`, `THREADS_REDIRECT_URI`, `TOKEN_ENCRYPTION_KEY`를 넣고 **Redeploy**.
+6. 앱의 **설정 → Threads 계정 → 계정 연결** → 테스트 발행.
+
+> **`TOKEN_ENCRYPTION_KEY`는 반드시 따로 백업한다.** 잃어버리면 저장된 토큰을 복호화할 수 없어 모든 계정을 다시 연결해야 한다.
+>
+> 토큰 정책(공식 문서): 장기 토큰 60일, 발급 24시간 이후부터 갱신 가능. 공개 프로필은 갱신 시 권한이 90일 연장되지만
+> **비공개 프로필은 90일마다 다시 연결**해야 한다. 앱은 매일 04:00(KST)에 만료 7일 이내 토큰을 갱신하고, 실패하면 "재연결 필요"로 표시한다.
 
 ## 2. 환경변수
 
@@ -113,10 +139,16 @@ app/(main)/...            로그인 후 화면들 (사이드바 레이아웃)
 components/ui             shadcn/ui 스타일 기본 컴포넌트 (+ Chip)
 components/layout         사이드바, 앱 셸, 페이지 헤더
 lib/auth                  세션 쿠키 서명/검증
+lib/crypto                토큰 암호화(AES-256-GCM)
+lib/threads               Threads API 클라이언트, 계정·토큰 관리, 글자 수 계산
+lib/notify                활동 알림 저장
+components/settings       설정 화면 구성요소
+tests                     단위 테스트(vitest): npm test
 lib/db                    Supabase service role 클라이언트
 lib/env.ts                서버 환경변수 검증(zod)
 supabase/migrations       스키마 SQL
 supabase/seed.sql         기본 데이터
+supabase/cron.sql         pg_cron 주기 작업 등록
 ```
 
 ## 참고
