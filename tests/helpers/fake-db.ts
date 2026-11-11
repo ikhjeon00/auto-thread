@@ -14,7 +14,22 @@ export class FakeDb {
   from(t: string) {
     return new Query(this, t);
   }
+  removed: string[] = [];
+  storage = {
+    from: () => ({
+      remove: async (paths: string[]) => {
+        this.removed.push(...paths);
+        return { data: paths.map((name) => ({ name })), error: null };
+      },
+      getPublicUrl: (path: string) => ({ data: { publicUrl: `https://fake/${path}` } }),
+    }),
+  };
   async rpc(name: string, args: Record<string, number>) {
+    if (name === "list_stale_uploads") {
+      const cutoff = Date.now() - (args.p_days ?? 3) * 86_400_000;
+      const rows = this.rows("storage_objects").filter((o) => String(o.name).startsWith("uploads/") && Date.parse(String(o.created_at)) < cutoff);
+      return { data: rows.map((o) => ({ name: o.name, created_at: o.created_at })), error: null };
+    }
     if (name === "claim_jobs") {
       const now = Date.now();
       const due = this.rows("jobs")

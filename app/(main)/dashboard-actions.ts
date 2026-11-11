@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
+import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 
 export type AccountDetail = {
@@ -43,6 +44,6 @@ export async function accountDetailAction(accountId: string): Promise<{ ok: true
       },
     };
   } catch (e) {
-    return { ok: false, error: e instanceof z.ZodError ? "잘못된 계정입니다." : e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }

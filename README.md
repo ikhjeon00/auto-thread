@@ -14,7 +14,7 @@
 | M6 | 글 창고 | ✅ |
 | M7 | 계정 키우기 농장, 수익화 농장, 자료실 | ✅ |
 | M8 | 대시보드 통계 | 구현 완료 · 실사용 확인 대기 |
-| M9 | 보석함, 정리, 마무리 | |
+| M9 | 보석함, 정리 작업, 에러 처리, 반응형 점검, README | 구현 완료 · 실사용 확인 대기 |
 
 ## 준비물
 
@@ -22,8 +22,8 @@
 - [Supabase](https://supabase.com) 프로젝트 1개
 - [Vercel](https://vercel.com) 계정 (Hobby 플랜)
 - GitHub 저장소 (Vercel 배포용)
-- (M2부터) Meta 개발자 계정과 Threads 앱
-- (M5부터) Anthropic API 키
+- Meta 개발자 계정과 Threads 앱(테스터 계정 최대 50개)
+- (AI를 쓸 때) OpenAI 또는 Google Gemini API 키
 
 ## 1. Supabase 설정
 
@@ -40,6 +40,7 @@
    7. `supabase/migrations/0006_pools.sql` — 창고 배정 정보, jobs 큐 잠금 함수, `call_cron` 대기 시간 인자
    8. `supabase/migrations/0007_pool_compose.sql` — 창고 글을 글 작성과 같은 형태로 저장
    9. `supabase/migrations/0008_farm.sql` — 농장 묶음(batch)·설정, 상품 사진
+   10. `supabase/migrations/0009_cleanup.sql` — 정리 작업용 오래된 업로드 목록 함수
 3. **Table Editor**에서 테이블 26개가 생겼고, **Storage**에 `media` 버킷(Public)이 생겼는지 확인한다.
 4. **Project Settings → API** 에서 다음 값을 복사해 둔다.
    - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
@@ -52,12 +53,20 @@
 
 ## 1-1. 주기 작업 등록 (pg_cron)
 
-현재 등록되는 작업: `refresh-tokens`(매일 04:00 KST), `publish`(1분마다), `jobs`(1분마다, 응답 5분까지 대기), `pool-maintenance`(매일 02:00 KST), `sync-stats`(매일 00:10 KST + 3시간마다 :40분).
+| 작업 | 주기(KST) | 하는 일 |
+|---|---|---|
+| `publish` | 1분마다 | 예약 시간이 된 글 발행(상태 머신), 댓글, 재시도 |
+| `jobs` | 1분마다 | AI 일괄 생성, 농장 만들기(응답 5분까지 대기) |
+| `refresh-tokens` | 매일 04:00 | 만료 7일 이내 Threads 토큰 갱신 |
+| `sync-stats` | 매일 00:10 + 3시간마다(:40) | 계정·게시물 통계 수집 |
+| `pool-maintenance` | 매일 02:00 | 창고 재고 부족 알림, 자동 보충, 오래된 배정 풀기 |
+| `cleanup` | 매일 05:00 | 기한 지난 1회용 첨부·버려진 업로드·오래된 기록 정리 |
 
 1. Supabase → **Database → Extensions** 에서 `pg_cron`, `pg_net`을 켠다(SQL에서도 켜지만 권한 문제로 실패하면 여기서 켠다).
 2. `supabase/cron.sql`을 SQL Editor에 붙여 넣고, `<APP_URL>`(배포 주소, 끝에 `/` 없이)과 `<CRON_SECRET>`(Vercel의 같은 값)을 바꾼 뒤 Run.
-3. 확인: `select jobname, schedule, active from cron.job;`
-4. 단계가 진행되면 cron.sql의 주석 처리된 작업이 하나씩 열린다. 파일을 다시 실행하면 된다(같은 이름은 덮어씀).
+3. 확인: `select jobname, schedule, active from cron.job;` → 위 표의 7줄(`sync-stats`는 2줄)이 나오면 된다.
+4. 실행 기록: `select * from cron.job_run_details order by start_time desc limit 10;`, 응답: `select status_code, content from net._http_response order by created desc limit 10;`
+5. 다시 실행해도 된다(같은 이름의 작업은 덮어씀).
 
 비밀값은 Supabase Vault(`app_url`, `cron_secret`)에 저장된다. `CRON_SECRET`을 바꾸면 Vercel과 cron.sql 둘 다 다시 맞춘다.
 
@@ -102,17 +111,17 @@ openssl rand -hex 32      # CRON_SECRET
 openssl rand -base64 32   # TOKEN_ENCRYPTION_KEY
 ```
 
-| 변수 | 필요 단계 | 설명 |
+| 변수 | 필수 | 설명 |
 |---|---|---|
-| `APP_PASSWORD` | M1 | 로그인 비밀번호 |
-| `SESSION_SECRET` | M1 | 세션 쿠키 서명 키(32자 이상) |
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | M1 | Supabase 접속 정보 |
-| `SUPABASE_SERVICE_ROLE_KEY` | M1 | 서버 전용 DB 키 |
-| `STORAGE_BUCKET` | M3 | 기본 `media` |
-| `CRON_SECRET` | M1 | `/api/cron/*` 호출 인증 |
-| `THREADS_APP_ID` / `THREADS_APP_SECRET` / `THREADS_REDIRECT_URI` | M2 | Threads 앱 정보 |
-| `TOKEN_ENCRYPTION_KEY` | M2 | Threads 토큰 암호화(AES-256-GCM) |
-| `OPENAI_API_KEY` / `GEMINI_API_KEY` | M5 | (선택) AI 키. **앱의 설정 > AI 에서 등록하는 것을 권장**하며, 거기 등록한 키가 우선한다 |
+| `APP_PASSWORD` | ✅ | 로그인 비밀번호 |
+| `SESSION_SECRET` | ✅ | 세션 쿠키 서명 키(32자 이상) |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase 접속 정보 |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | 서버 전용 DB 키 |
+| `STORAGE_BUCKET` | – | 기본 `media` |
+| `CRON_SECRET` | ✅ | `/api/cron/*` 호출 인증 |
+| `THREADS_APP_ID` / `THREADS_APP_SECRET` / `THREADS_REDIRECT_URI` | ✅ | Threads 앱 정보 |
+| `TOKEN_ENCRYPTION_KEY` | ✅ | Threads 토큰 암호화(AES-256-GCM) |
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` | – | (선택) AI 키. **앱의 설정 > AI 에서 등록하는 것을 권장**하며, 거기 등록한 키가 우선한다 |
 | `APP_TIMEZONE` | – | 기본 `Asia/Seoul` |
 
 ## 3. 로컬 실행
@@ -132,8 +141,11 @@ http://localhost:3000 접속 → `APP_PASSWORD`로 로그인.
 1. 이 프로젝트를 GitHub 저장소에 push 한다.
 2. Vercel → Add New → Project → 저장소 Import (Framework: Next.js 자동 인식).
 3. **Environment Variables**에 `.env.local`의 값을 모두 입력한다(Production).
-4. Deploy. 배포 주소(예: `https://auto-thread-xxx.vercel.app`)를 기록해 둔다. M2의 `THREADS_REDIRECT_URI`와 M3의 `cron.sql`에 쓴다.
-5. Vercel Cron은 쓰지 않는다. 주기 작업은 Supabase pg_cron이 호출한다.
+4. Deploy. 배포 주소(예: `https://auto-thread-xxx.vercel.app`)를 기록해 둔다. `THREADS_REDIRECT_URI`와 `cron.sql`의 `<APP_URL>`에 쓴다.
+5. 앱에 로그인 → **설정 → AI**에서 API 키 등록과 기본 모델 선택, **설정 → 계정**에서 Threads 계정 연결.
+6. Vercel Cron은 쓰지 않는다. 주기 작업은 Supabase pg_cron이 호출한다.
+
+코드를 고쳐 GitHub `main`에 push 하면 Vercel이 자동으로 다시 배포한다. 새 마이그레이션 파일이 생기면 Supabase SQL Editor에서 그 파일만 실행한다(모든 마이그레이션은 다시 실행해도 안전).
 
 ## 발행 동작 (M3)
 
@@ -218,19 +230,62 @@ http://localhost:3000 접속 → `APP_PASSWORD`로 로그인.
 - `/`(대시보드): 요약 카드 4개, 운영 카드(발행 실패·재연결 필요·창고 재고 부족 → 해당 목록), 계정별 팔로워 추이(7/14/30일, 계정을 눌러 최대 8개 선택, 색은 계정을 따라감), 계정별 반응 지표(조회수/댓글수/좋아요수, 7/14/30일 합계), 계정 표(모든 열 정렬, 검색, 그룹·상태 필터, 오늘/어제/7일/14일/30일, 50개씩) → 행을 누르면 오른쪽에 팔로워 추이·최근 게시물 성과·예약된 글.
 - 차트 색은 검증된 범주형 팔레트(색약 구분 검사 통과)를 고정 순서로 쓴다.
 
+## 보석함 (M9)
+
+- `/bookmarks` — **나의 보석함**(내가 올린 글에서 ★로 저장, 저장 당시 성과 함께)과 **참고 글**(직접 붙여 넣은 문장과 출처 주소, 자동 수집 없음).
+- 검색, 태그, 수정, 삭제, 선택한 글을 **창고로 옮기기**. AI 생성기는 보석함 글을 스타일 예시로 몇 개씩 참고한다(생성기의 「보석함 예시 수」).
+
+## 정리 작업 (M9)
+
+- `/api/cron/cleanup`(매일 05:00 KST)
+  - 발행 30일이 지난 1회용 첨부(`media/uploads/…`) 삭제. 아직 발행 전인 글이 같은 파일을 쓰면 남긴다.
+  - 글에 붙지 않은 채 3일 넘게 남은 업로드(작성하다 버린 사진) 삭제.
+  - 발행 로그 90일, 읽은 알림 60일, 끝난 작업 30일, AI 사용 기록 400일이 지나면 삭제.
+  - 자료실(`assets/`)·상품(`products/`) 파일은 지우지 않는다.
+
+## 운영 안내
+
+**꼭 백업할 값**: `TOKEN_ENCRYPTION_KEY`(잃으면 모든 Threads 계정·AI 키를 다시 등록), `APP_PASSWORD`(기억). 나머지는 각 서비스 콘솔에서 다시 볼 수 있다.
+
+**문제 해결**
+
+| 증상 | 확인할 것 |
+|---|---|
+| 화면에 「화면을 불러오지 못했습니다」 | Supabase 프로젝트가 일시 중지(Free 플랜, 오래 안 쓰면)되지 않았는지, Vercel 환경변수가 맞는지 |
+| 예약 시간이 지났는데 안 올라감 | `cron.job`에 `publish`가 있는지, `net._http_response`가 200인지(401이면 `CRON_SECRET` 불일치) |
+| 발행 실패 | 예약한 글 → 실패 글을 누르면 이유가 보인다. 토큰 오류면 설정에서 재연결 후 「재시도」 |
+| 계정이 「재연결 필요」 | 설정 → 계정 → 재연결(비공개 프로필은 90일마다 필요) |
+| AI 오류 | 설정 → AI의 키·기본 모델(저장 시 시험 호출로 확인), 활동 메뉴의 AI 오류 알림 |
+| 농장·창고 AI 생성이 멈춤 | `cron.job`에 `jobs`가 있는지, 농장 화면의 진행률·오류 |
+| 대시보드가 비어 있음 | `sync-stats` 등록 여부. 지금 바로: `select public.call_cron('sync-stats');` |
+
 ## 테스트
 
 ```bash
 npm test
 ```
 
-발행 상태 머신은 메모리 DB와 가짜 Threads API로 시나리오 테스트를 한다(`tests/publisher.test.ts`).
+메모리 DB(`tests/helpers/fake-db.ts`)와 가짜 Threads API·가짜 AI로 실제 코드를 시나리오 테스트한다. 외부 서비스에 접속하지 않는다.
+
+| 파일 | 내용 |
+|---|---|
+| `publisher.test.ts` | 캐러셀+링크·고지 댓글 발행, 사진 댓글, 분산 발행, 재시도·실패, 토큰 오류, 창고 글 사용 기록 |
+| `plan.test.ts` | 링크·고지 문구 위치, 상품 홍보글, 500자·링크 5개 검사 |
+| `slots.test.ts` · `conflicts.test.ts` | 농장 시간 배치 규칙, 예약 충돌·빈 시간 찾기 |
+| `pool-select.test.ts` · `pool-pick.test.ts` | 창고 선택 규칙, 동시 배정 방지, jobs 큐 |
+| `farm.test.ts` | 키우기·수익화(사진 보고 쓰기)·발행 직전 뽑기·농장 삭제 |
+| `ai.test.ts` | 프롬프트 조립, 검사 실패분 재생성, 비용, 키 암호화 저장 |
+| `stats.test.ts` · `cleanup.test.ts` | 통계 수집, 정리 작업 |
+| 그 밖 | 세션, 토큰 암호화, 글자 수, CSV, 달력, 에러 문구 |
 
 ## 보안 구조
 
 - 로그인: `APP_PASSWORD` 비교 후 HMAC 서명 httpOnly 쿠키(30일) 발급. `middleware.ts`가 `/login`, `/api/cron/*` 외 모든 경로를 보호한다.
 - `/api/cron/*`: `Authorization: Bearer ${CRON_SECRET}` 헤더가 없으면 401.
-- 비밀값은 서버 코드(`lib/env.ts`, `server-only`)에서만 읽는다.
+- 비밀값은 서버 코드(`lib/env.ts`, `server-only`)에서만 읽는다. 서버 액션도 로그인 여부를 한 번 더 확인한다.
+- DB: 모든 테이블 RLS 켜짐 + anon 정책 없음. 서버의 service role 키로만 접근. DB 함수(`claim_due_posts`, `claim_jobs`, `list_stale_uploads`, `call_cron`)는 service role 만 실행 가능.
+- Threads 토큰과 설정에서 등록한 AI 키는 `TOKEN_ENCRYPTION_KEY`로 AES-256-GCM 암호화해 저장하고, 화면에는 끝 4자리만 보인다.
+- 업로드는 서버가 발급한 signed URL 로만 가능. `media` 버킷은 공개 읽기(Threads가 사진을 가져가야 해서), 경로는 무작위(`폴더/uuid/파일명`).
 
 ## 폴더 구조
 
@@ -248,6 +303,9 @@ lib/compose               작성 내용 검증(zod)·발행 형태 변환·저�
 lib/publisher             발행 상태 머신(/api/cron/publish)
 lib/pool                  창고 선택 규칙(select), 배정·사용 기록·재고(pick), 매일 정리(maintenance)
 lib/jobs                  jobs 큐와 작업 처리기
+lib/errors.ts             화면용 에러 문구(검증 오류를 한국어로)
+lib/cleanup.ts            매일 정리 작업
+components/bookmarks      보석함
 lib/stats                 통계 수집(계정·게시물 인사이트)
 components/dashboard      대시보드 차트·표·상세 패널
 lib/farm                  농장 만들기(build), 발행 직전 뽑기(at-publish), 화면 데이터

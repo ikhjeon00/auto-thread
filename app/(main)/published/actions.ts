@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
+import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -38,6 +39,6 @@ export async function toggleBookmarkAction(postId: string): Promise<Result<{ sav
     revalidatePath("/published");
     return { ok: true, data: { saved: true } };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }

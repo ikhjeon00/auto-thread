@@ -73,7 +73,7 @@ export function PublishedList({
         <span className="num ml-auto text-sm text-muted-foreground">{total}개</span>
       </div>
       {noInsights && (
-        <p className="text-xs text-muted-foreground">조회수·좋아요·댓글 수는 통계 수집 작업(M8)이 돌기 시작하면 채워집니다.</p>
+        <p className="text-xs text-muted-foreground">조회수·좋아요·댓글 수는 통계 수집(3시간마다)이 돌면 채워집니다.</p>
       )}
 
       {items.length === 0 ? (

@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
+import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 import { env } from "@/lib/env";
 import { enqueueJob, runJobs } from "@/lib/jobs";
@@ -13,10 +14,7 @@ import { releasePoolItem } from "@/lib/pool/pick";
 import type { FarmConfig } from "@/lib/farm/types";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
-const fail = (e: unknown): { ok: false; error: string } => ({
-  ok: false,
-  error: e instanceof z.ZodError ? e.issues.map((i) => i.message).join(" / ") : e instanceof Error ? e.message : String(e),
-});
+const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: errorMessage(e) });
 const uuid = z.string().uuid();
 const hm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "시간 형식은 HH:MM 입니다.");
 

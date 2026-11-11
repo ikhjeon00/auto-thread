@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
+import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 import { enqueueJob, runJobs } from "@/lib/jobs";
 import { buildPlan, hasErrors } from "@/lib/compose/plan";
@@ -13,10 +14,7 @@ import { loadDisclosure } from "@/lib/compose/save";
 import { getSettings } from "@/lib/settings";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
-const fail = (e: unknown): { ok: false; error: string } => ({
-  ok: false,
-  error: e instanceof z.ZodError ? e.issues.map((i) => i.message).join(" / ") : e instanceof Error ? e.message : String(e),
-});
+const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: errorMessage(e) });
 const uuid = z.string().uuid();
 
 function refresh(poolId?: string) {

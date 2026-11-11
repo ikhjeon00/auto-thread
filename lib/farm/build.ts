@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db/admin";
+import { errorMessage } from "@/lib/errors";
 import { generatePosts } from "@/lib/ai/generate";
 import type { GeneratedPost } from "@/lib/ai/validate";
 import { kstRange } from "@/lib/calendar";
@@ -149,12 +150,7 @@ async function finalize(ph: Placeholder, c: CampaignRow, input: Omit<ComposeInpu
   } catch (e) {
     // 자동 모드에서 검사에 걸리면 검토 대기로 돌려 사람이 고치게 한다
     await savePost(compose, { postId: ph.id, status: "draft", scheduledAt: new Date(ph.scheduled_at) }).catch(() => {});
-    const msg =
-      e && typeof e === "object" && "issues" in e && Array.isArray((e as { issues: unknown[] }).issues)
-        ? (e as { issues: { path: unknown[]; message: string }[] }).issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(" / ")
-        : e instanceof Error
-          ? e.message
-          : String(e);
+    const msg = errorMessage(e);
     await db().from("posts").update({ status: "review", last_error: msg }).eq("id", ph.id);
   }
   await db().from("posts").update({ campaign_id: c.id, ai_meta: meta }).eq("id", ph.id);

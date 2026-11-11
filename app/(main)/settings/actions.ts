@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
+import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 import { publishTextNow } from "@/lib/threads/accounts";
 import { saveSettings } from "@/lib/settings";
@@ -10,7 +11,7 @@ import { saveSettings } from "@/lib/settings";
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
 function fail(e: unknown): { ok: false; error: string } {
-  return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  return { ok: false, error: errorMessage(e) };
 }
 
 const uuid = z.string().uuid();
@@ -158,7 +159,6 @@ export async function saveGeneralSettings(input: GeneralInput): Promise<ActionRe
     revalidatePath("/compose");
     return { ok: true };
   } catch (e) {
-    if (e instanceof z.ZodError) return { ok: false, error: e.issues.map((i) => i.message).join(" / ") };
     return fail(e);
   }
 }
@@ -189,7 +189,6 @@ export async function saveFollowerTiersAction(tiers: z.input<typeof tierInput>):
     revalidatePath("/farm/monetize");
     return { ok: true };
   } catch (e) {
-    if (e instanceof z.ZodError) return { ok: false, error: e.issues.map((i) => i.message).join(" / ") };
     return fail(e);
   }
 }

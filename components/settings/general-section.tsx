@@ -21,7 +21,7 @@ export function GeneralSection({ initial }: { initial: GeneralInput }) {
     <Card>
       <CardHeader>
         <CardTitle>일반 설정</CardTitle>
-        <CardDescription>예약 간격, 하루 상한, 금칙어를 정합니다. 이번 달 AI 비용은 M5에서 표시됩니다.</CardDescription>
+        <CardDescription>예약 간격, 하루 상한, 금칙어, 창고가 비었을 때 동작을 정합니다. 이번 달 AI 비용은 AI 탭에서 볼 수 있습니다.</CardDescription>
       </CardHeader>
       <CardContent>
         <form

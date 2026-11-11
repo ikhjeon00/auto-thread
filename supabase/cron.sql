@@ -59,8 +59,8 @@ select cron.schedule('pool-maintenance', '0 17 * * *', $$select public.call_cron
 select cron.schedule('sync-stats', '10 15 * * *', $$select public.call_cron('sync-stats')$$);
 select cron.schedule('sync-stats-3h', '40 */3 * * *', $$select public.call_cron('sync-stats')$$);
 
--- 이후 단계에서 추가될 작업 (지금은 주석)
--- M9: select cron.schedule('cleanup',          '0 20 * * *',    $$select public.call_cron('cleanup')$$);    -- 05:00 KST
+-- 매일 05:00 KST (= 20:00 UTC): 기한 지난 첨부·버려진 업로드·오래된 기록 정리 (M9)
+select cron.schedule('cleanup', '0 20 * * *', $$select public.call_cron('cleanup')$$);
 
 -- 확인용:
 --   select jobname, schedule, active from cron.job;

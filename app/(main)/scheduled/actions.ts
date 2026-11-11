@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
+import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 import { checkSchedule, type ScheduleCheck } from "@/lib/scheduler/check";
 import { releasePoolItem } from "@/lib/pool/pick";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string; conflict?: ScheduleCheck };
-const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof Error ? e.message : String(e) });
+const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: errorMessage(e) });
 const uuid = z.string().uuid();
 
 function refresh() {

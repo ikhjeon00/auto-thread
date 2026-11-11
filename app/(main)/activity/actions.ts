@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
+import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 
 export type Result = { ok: true } | { ok: false; error: string };
@@ -18,7 +19,7 @@ export async function markReadAction(ids: string[]): Promise<Result> {
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }
 
@@ -30,6 +31,6 @@ export async function markAllReadAction(): Promise<Result> {
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }

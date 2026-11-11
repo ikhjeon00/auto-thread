@@ -3,15 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
+import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 import { getProvider, saveStoredKey } from "@/lib/ai/config";
 import { PROVIDERS } from "@/lib/ai/types";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
-const fail = (e: unknown): { ok: false; error: string } => ({
-  ok: false,
-  error: e instanceof z.ZodError ? e.issues.map((i) => i.message).join(" / ") : e instanceof Error ? e.message : String(e),
-});
+const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: errorMessage(e) });
 const uuid = z.string().uuid();
 const provider = z.enum(PROVIDERS);
 
