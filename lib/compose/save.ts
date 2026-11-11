@@ -101,7 +101,18 @@ export async function savePost(raw: ComposeInput, opts: SaveOptions): Promise<{ 
   if (plan.replies.length) {
     const { error } = await db()
       .from("post_replies")
-      .insert(plan.replies.map((r, i) => ({ post_id: postId, text: r.text, kind: r.kind, sort_order: i, status: "pending" })));
+      .insert(
+        plan.replies.map((r, i) => ({
+          post_id: postId,
+          text: r.text,
+          kind: r.kind,
+          sort_order: i,
+          status: "pending",
+          media_type: r.media?.mediaType ?? null,
+          media_url: r.media?.publicUrl ?? null,
+          storage_path: r.media?.storagePath ?? null,
+        })),
+      );
     if (error) throw new Error(error.message);
   }
 

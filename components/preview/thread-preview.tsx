@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import { ChevronRight, Heart, MessageCircle, MoreHorizontal, Repeat2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { hostOf } from "@/lib/compose/plan";
+import { extractUrls, hostOf } from "@/lib/compose/plan";
 
 export type PreviewMedia = { url: string; mediaType: "image" | "video" };
 
@@ -12,7 +12,7 @@ type Props = {
   avatarUrl: string | null;
   mainText: string;
   media: PreviewMedia[];
-  replies: string[];
+  replies: { text: string; media: PreviewMedia | null }[];
   linkAttachment: string | null;
   topicTag: string | null;
   isAiLabel: boolean;
@@ -147,7 +147,7 @@ function Item({
 
 /** Threads 모바일 화면 흉내. 실제 화면과 세부 모양은 다를 수 있다. */
 export function ThreadPreview(p: Props) {
-  const replies = p.replies.filter(Boolean);
+  const replies = p.replies.filter((r) => r.text || r.media);
   const empty = !p.mainText && !p.media.length;
   return (
     <div className="mx-auto w-full max-w-[380px] overflow-hidden rounded-[28px] border-[6px] border-neutral-900 bg-white text-neutral-900 shadow-lg">
@@ -169,7 +169,16 @@ export function ThreadPreview(p: Props) {
               time="방금"
             />
             {replies.map((r, i) => (
-              <Item key={i} username={p.username} avatarUrl={p.avatarUrl} text={r} hasNext={i < replies.length - 1} time="방금" />
+              <Item
+                key={i}
+                username={p.username}
+                avatarUrl={p.avatarUrl}
+                text={r.text}
+                media={r.media ? [r.media] : []}
+                linkAttachment={!r.media ? (extractUrls(r.text)[0] ?? null) : null}
+                hasNext={i < replies.length - 1}
+                time="방금"
+              />
             ))}
           </>
         )}

@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ThreadPreview } from "@/components/preview/thread-preview";
 import { AccountAvatar } from "@/components/settings/account-avatar";
 import { buildPlan, hasErrors, hostOf, matchDisclosure, type DisclosureLite } from "@/lib/compose/plan";
-import { MAX_REPLIES, type Compose, type DisclosurePosition } from "@/lib/compose/schema";
+import { MAX_REPLIES, type Compose, type DisclosurePosition, type ReplyItem } from "@/lib/compose/schema";
 import { THREADS_TEXT_LIMIT, countThreadsChars } from "@/lib/threads/text";
 import { SIMILARITY_WARN, mostSimilar } from "@/lib/text/similarity";
 import { APP_TZ } from "@/lib/time";
@@ -104,9 +104,9 @@ export function Composer({ accounts, disclosures, bannedWords, drafts, initial }
 
   // 상품 홍보글인데 고지 문구가 없으면 기본 문구를 자동 선택
   useEffect(() => {
-    if (c.kind !== "product" || c.disclosureId) return;
-    const d = disclosures.find((x) => x.is_default) ?? disclosures[0];
-    if (d) setC((prev) => ({ ...prev, disclosureId: d.id }));
+    if (c.kind !== "product") return;
+    const d = c.disclosureId ? null : (disclosures.find((x) => x.is_default) ?? disclosures[0]);
+    setC((prev) => ({ ...prev, firstReplyMainMedia: true, ...(d ? { disclosureId: d.id } : {}) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c.kind]);
 
@@ -409,42 +409,65 @@ function StepWrite({
       </Section>
 
       <Section no="②" title="댓글" aside={<span className="num text-xs text-muted-foreground">{c.replies.length} / {MAX_REPLIES}</span>}>
-        <div className="flex flex-col gap-3">
-          {c.replies.map((r, i) => (
-            <div key={i} className="flex flex-col gap-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">{i === 0 ? "첫 댓글" : `${i + 1}번째 댓글`}</Label>
-                <div className="flex items-center gap-2">
-                  <Counter n={countThreadsChars(r)} />
-                  <button
-                    type="button"
-                    aria-label="댓글 삭제"
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={() => set("replies", c.replies.filter((_, j) => j !== i))}
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
+        <div className="flex flex-col gap-4">
+          {c.replies.map((r, i) => {
+            const update = (patch: Partial<ReplyItem>) => set("replies", c.replies.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+            const usesMain = i === 0 && c.firstReplyMainMedia && c.media.length > 0 && !r.media;
+            return (
+              <div key={i} className="flex flex-col gap-2 rounded-md border bg-background p-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">{i === 0 ? "첫 댓글" : `${i + 1}번째 댓글`}</Label>
+                  <div className="flex items-center gap-2">
+                    <Counter n={countThreadsChars(r.text)} />
+                    <button
+                      type="button"
+                      aria-label="댓글 삭제"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => set("replies", c.replies.filter((_, j) => j !== i))}
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
                 </div>
+                <Textarea
+                  rows={2}
+                  value={r.text}
+                  onChange={(e) => update({ text: e.target.value })}
+                  aria-invalid={countThreadsChars(r.text) > THREADS_TEXT_LIMIT}
+                />
+                {usesMain ? (
+                  <p className="text-xs text-muted-foreground">본문 첫 사진이 이 댓글에 붙습니다.</p>
+                ) : (
+                  <MediaPicker compact max={1} value={r.media ? [r.media] : []} onChange={(v) => update({ media: v[0] ?? null })} />
+                )}
               </div>
-              <Textarea
-                rows={2}
-                value={r}
-                onChange={(e) => set("replies", c.replies.map((x, j) => (j === i ? e.target.value : x)))}
-                aria-invalid={countThreadsChars(r) > THREADS_TEXT_LIMIT}
-              />
-            </div>
-          ))}
+            );
+          })}
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="self-start"
             disabled={c.replies.length >= MAX_REPLIES}
-            onClick={() => set("replies", [...c.replies, ""])}
+            onClick={() => set("replies", [...c.replies, { text: "", media: null }])}
           >
             <Plus /> 댓글 추가
           </Button>
-          <p className="text-xs text-muted-foreground">댓글은 본문 아래에 순서대로 이어서(스레드 형태로) 달립니다.</p>
+          {c.media.length > 0 && (
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-[var(--primary)]"
+                checked={c.firstReplyMainMedia}
+                onChange={(e) => set("firstReplyMainMedia", e.target.checked)}
+              />
+              <span>
+                첫 댓글에 본문 첫 사진 붙이기
+                <span className="block text-xs text-muted-foreground">사진이 있는 댓글은 링크 미리보기 카드 없이 링크만 표시됩니다.</span>
+              </span>
+            </label>
+          )}
+          <p className="text-xs text-muted-foreground">댓글은 본문 아래에 순서대로 이어서(스레드 형태로) 달립니다. 댓글마다 사진·영상 1개를 붙일 수 있습니다.</p>
         </div>
       </Section>
 
@@ -580,7 +603,7 @@ function Preview({ account, plan, c }: { account: ComposerAccount | null; plan: 
       avatarUrl={account?.profile_picture_url ?? null}
       mainText={plan.mainText}
       media={c.media.map((m) => ({ url: m.publicUrl, mediaType: m.mediaType }))}
-      replies={plan.replies.map((r) => r.text)}
+      replies={plan.replies.map((r) => ({ text: r.text, media: r.media ? { url: r.media.publicUrl, mediaType: r.media.mediaType } : null }))}
       linkAttachment={plan.linkAttachment}
       topicTag={c.topicTag}
       isAiLabel={c.isAiLabel}

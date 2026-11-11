@@ -10,7 +10,17 @@ import { cn } from "@/lib/utils";
 
 type Uploading = { key: string; name: string; previewUrl: string | null };
 
-export function MediaPicker({ value, onChange }: { value: MediaItem[]; onChange: (v: MediaItem[]) => void }) {
+export function MediaPicker({
+  value,
+  onChange,
+  max = MAX_MEDIA,
+  compact = false,
+}: {
+  value: MediaItem[];
+  onChange: (v: MediaItem[]) => void;
+  max?: number;
+  compact?: boolean;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<Uploading[]>([]);
   const [messages, setMessages] = useState<{ level: "error" | "warn"; text: string }[]>([]);
@@ -19,14 +29,14 @@ export function MediaPicker({ value, onChange }: { value: MediaItem[]; onChange:
   const latest = useRef(value);
   latest.current = value;
 
-  const remaining = MAX_MEDIA - value.length - uploading.length;
+  const remaining = max - value.length - uploading.length;
 
   async function addFiles(list: FileList | File[]) {
     const files = Array.from(list);
     if (!files.length) return;
     const msgs: { level: "error" | "warn"; text: string }[] = [];
     if (files.length > remaining) {
-      msgs.push({ level: "error", text: `최대 ${MAX_MEDIA}개까지 올릴 수 있어서 ${files.length - Math.max(remaining, 0)}개는 제외했습니다.` });
+      msgs.push({ level: "error", text: `최대 ${max}개까지 올릴 수 있어서 ${files.length - Math.max(remaining, 0)}개는 제외했습니다.` });
     }
     const picked = files.slice(0, Math.max(remaining, 0));
     const pending: Uploading[] = picked.map((f) => ({
@@ -68,18 +78,20 @@ export function MediaPicker({ value, onChange }: { value: MediaItem[]; onChange:
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" size="sm" disabled={remaining <= 0} onClick={() => inputRef.current?.click()}>
-          <ImagePlus /> 직접 추가
+          <ImagePlus /> {compact ? "사진·영상 붙이기" : "직접 추가"}
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled title="자료실은 M7 단계에서 추가됩니다">
-          <Images /> 자료실에서 고르기
-        </Button>
+        {!compact && (
+          <Button type="button" variant="outline" size="sm" disabled title="자료실은 M7 단계에서 추가됩니다">
+            <Images /> 자료실에서 고르기
+          </Button>
+        )}
         <span className="num text-xs text-muted-foreground">
-          {value.length} / {MAX_MEDIA}
+          {value.length} / {max}
         </span>
         <input
           ref={inputRef}
           type="file"
-          multiple
+          multiple={max > 1}
           hidden
           accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/quicktime,.mov"
           onChange={(e) => {
@@ -89,6 +101,7 @@ export function MediaPicker({ value, onChange }: { value: MediaItem[]; onChange:
         />
       </div>
 
+      {!(compact && value.length === 0 && uploading.length === 0) && (
       <div
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes("Files")) {
@@ -116,7 +129,7 @@ export function MediaPicker({ value, onChange }: { value: MediaItem[]; onChange:
             <span className="text-xs">HEIC·WebP는 JPEG로 바뀌고, 가로 1440px로 줄여서 올립니다.</span>
           </p>
         ) : (
-          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+          <ul className={cn("grid gap-2", compact ? "w-28 grid-cols-1" : "grid-cols-3 sm:grid-cols-4 md:grid-cols-5")}>
             {value.map((m, i) => (
               <li
                 key={m.storagePath}
@@ -175,6 +188,7 @@ export function MediaPicker({ value, onChange }: { value: MediaItem[]; onChange:
           </ul>
         )}
       </div>
+      )}
       {value.length > 1 && <p className="text-xs text-muted-foreground">끌어서 순서를 바꿀 수 있습니다. 2개 이상이면 캐러셀로 올라갑니다.</p>}
       {messages.length > 0 && (
         <ul className="flex flex-col gap-1 text-sm">

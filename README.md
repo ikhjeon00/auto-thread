@@ -35,6 +35,7 @@
    3. `supabase/migrations/0002_publish.sql` — 발행 상태 머신용 컬럼과 `claim_due_posts` 함수(M3)
       (다시 실행해도 안전하다)
    4. `supabase/migrations/0003_product_disclosure.sql` — 상품 홍보글 고지 문구 위치(첫 댓글 맨 앞) 허용
+   5. `supabase/migrations/0004_reply_media.sql` — 댓글에 사진·영상 1개 첨부
 3. **Table Editor**에서 테이블 26개가 생겼고, **Storage**에 `media` 버킷(Public)이 생겼는지 확인한다.
 4. **Project Settings → API** 에서 다음 값을 복사해 둔다.
    - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
@@ -136,6 +137,7 @@ http://localhost:3000 접속 → `APP_PASSWORD`로 로그인.
 - 사진·영상은 브라우저에서 바로 Supabase Storage(`media/uploads/…`)로 올라간다. HEIC·WebP는 JPEG로 바뀌고 가로 1440px로 줄어든다.
 - 미디어가 있으면 링크는 자동으로 첫 댓글로 간다(Threads의 링크 미리보기는 텍스트 글에서만 동작).
 - 고지 문구 위치: 본문 끝 / 링크 댓글 / 별도 댓글. 본문에 넣으면 고지 문구까지 500자에 포함해 검사한다.
+- 댓글마다 사진·영상 1개를 붙일 수 있다. 글자만 있는 글·댓글은 Threads가 첫 링크를 미리보기 카드로 만들기 때문에(끄는 옵션 없음), 링크 댓글에 사진을 붙이면 카드 없이 링크만 보인다. 「첫 댓글에 본문 첫 사진 붙이기」 옵션(상품 홍보글은 기본 켜짐).
 - 상품 홍보글은 고지 문구가 항상 **첫 댓글 맨 앞**에 들어간다(고지 문구 + 댓글 내용 + 링크). 기본 고지 문구가 자동 선택된다.
 - 1분마다 `publish` 작업이 예약 시간이 된 글을 잠그고(중복 발행 방지) 컨테이너 생성 → 상태 확인 → 발행 → 댓글 순으로 진행한다.
   같은 회차에 여러 글이 있으면 30초~2분 간격으로 나눠 올린다.

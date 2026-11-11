@@ -128,6 +128,37 @@ describe("publisher (M3 완료 기준)", () => {
     expect(api.published()).toHaveLength(2); // 본문 1 + 댓글 1
   });
 
+  it("사진 댓글: 첫 댓글에 본문 첫 사진을 IMAGE 로 붙여 미리보기 카드 없이 링크를 단다", async () => {
+    const { postId } = await savePost(
+      {
+        accountId: ACC,
+        kind: "product",
+        text: "상품 소개",
+        media: [img(1), img(2)],
+        replies: ["진짜 잘 써요"],
+        firstReplyMainMedia: true,
+        linkUrl: "https://link.coupang.com/a/abc",
+        disclosureId: DISC,
+      },
+      { status: "scheduled", scheduledAt: new Date(Date.now() - 1000) },
+    );
+    // 사진 댓글 컨테이너는 처음엔 처리 중 → 다음 실행에서 발행
+    api.initialStatuses = (p) => (p.reply_to_id ? ["IN_PROGRESS", "IN_PROGRESS", "IN_PROGRESS"] : []);
+    let r = await runPublishBatch(deadline());
+    expect(r).toMatchObject({ published: 1, repliesPublished: 0, waiting: 1 });
+    expect(post(postId).replies_pending).toBe(true);
+    fastForward(postId);
+    r = await runPublishBatch(deadline());
+    expect(r.repliesPublished).toBe(1);
+
+    const reply = api.created((p) => !!p.reply_to_id);
+    expect(reply).toHaveLength(1); // 컨테이너를 다시 만들지 않음
+    expect(reply[0].params.media_type).toBe("IMAGE");
+    expect(reply[0].params.image_url).toBe(img(1).publicUrl);
+    expect(reply[0].params.text).toBe(`${DISC_TEXT}\n\n진짜 잘 써요\n\nhttps://link.coupang.com/a/abc`);
+    expect(post(postId).replies_pending).toBe(false);
+  });
+
   it("텍스트 글은 link_attachment 를 쓰고, 여러 댓글은 스레드로 이어 단다", async () => {
     const { postId } = await savePost(
       { accountId: ACC, text: "본문", replies: ["하나", "둘"], linkUrl: "https://example.com", linkPosition: "body" },

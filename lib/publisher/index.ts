@@ -46,6 +46,8 @@ type MediaRow = { id: string; public_url: string; media_type: "image" | "video";
 type ReplyRow = {
   id: string;
   text: string;
+  media_type: "image" | "video" | null;
+  media_url: string | null;
   sort_order: number;
   container_id: string | null;
   threads_media_id: string | null;
@@ -300,7 +302,7 @@ async function createMainContainer(post: PostRow, account: AccountRow, token: st
 async function publishReplies(post: PostRow, account: AccountRow, token: string, deadline: number): Promise<number> {
   const { data, error } = await db()
     .from("post_replies")
-    .select("id, text, sort_order, container_id, threads_media_id, status, attempt_count")
+    .select("id, text, media_type, media_url, sort_order, container_id, threads_media_id, status, attempt_count")
     .eq("post_id", post.id)
     .order("sort_order");
   if (error) throw new Error(error.message);
@@ -317,7 +319,17 @@ async function publishReplies(post: PostRow, account: AccountRow, token: string,
     if (Date.now() > deadline - 6_000) throw new Wait(5, "시간 부족, 다음 실행에서 계속");
 
     if (!r.container_id) {
-      r.container_id = await createContainer(account.threads_user_id, token, { media_type: "TEXT", text: r.text, reply_to_id: parentId });
+      const media =
+        r.media_url && r.media_type === "video"
+          ? ({ media_type: "VIDEO", video_url: r.media_url } as const)
+          : r.media_url
+            ? ({ media_type: "IMAGE", image_url: r.media_url } as const)
+            : ({ media_type: "TEXT" } as const);
+      r.container_id = await createContainer(account.threads_user_id, token, {
+        ...media,
+        text: r.text || undefined,
+        reply_to_id: parentId,
+      });
       await db().from("post_replies").update({ container_id: r.container_id, status: "processing" }).eq("id", r.id);
     }
     const st = await waitBriefly(r.container_id, token);
@@ -325,7 +337,10 @@ async function publishReplies(post: PostRow, account: AccountRow, token: string,
       await db().from("post_replies").update({ container_id: null }).eq("id", r.id);
       assertUsable(st, `${r.sort_order + 1}번째 댓글`);
     }
-    if (st.status !== "FINISHED") throw new Wait(CONTAINER_WAIT_SEC, "댓글 처리 중");
+    if (st.status !== "FINISHED") {
+      // 사진·영상 댓글은 처리 시간이 걸린다. 너무 오래 걸리면 컨테이너를 다시 만든다
+      throw new Wait(CONTAINER_WAIT_SEC, r.media_url ? "댓글 미디어 처리 중" : "댓글 처리 중");
+    }
 
     const mediaId = await publishContainer(account.threads_user_id, token, r.container_id);
     await db()

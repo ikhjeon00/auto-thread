@@ -10,7 +10,13 @@ const coupang: DisclosureLite = {
   default_position: "link_reply",
 };
 const img = (n: number) => ({ storagePath: `uploads/x/${n}.jpg`, publicUrl: `https://e.com/${n}.jpg`, mediaType: "image" as const });
-const base = (p: Partial<Compose>): Compose => ({ ...emptyCompose("a"), text: "본문", ...p });
+type Loose = Omit<Partial<Compose>, "replies"> & { replies?: (string | Compose["replies"][number])[] };
+const base = ({ replies, ...p }: Loose): Compose => ({
+  ...emptyCompose("a"),
+  text: "본문",
+  ...p,
+  replies: (replies ?? []).map((r) => (typeof r === "string" ? { text: r, media: null } : r)),
+});
 
 describe("buildPlan", () => {
   it("text-only post with body link uses link_attachment", () => {
@@ -30,7 +36,7 @@ describe("buildPlan", () => {
     expect(p.linkPosition).toBe("first_reply");
     expect(p.linkAttachment).toBeNull();
     expect(p.mainText).toBe("본문");
-    expect(p.replies).toEqual([{ kind: "link", text: `https://link.coupang.com/a/b\n\n${coupang.text}` }]);
+    expect(p.replies).toEqual([{ kind: "link", text: `https://link.coupang.com/a/b\n\n${coupang.text}`, media: null }]);
     expect(hasErrors(p)).toBe(false);
   });
 
@@ -79,14 +85,30 @@ describe("buildPlan", () => {
     expect(withReply.replies).toHaveLength(2);
 
     const noReply = buildPlan(base({ kind: "product", media: [img(1)], linkUrl: "https://link.coupang.com/a/x", disclosureId: "d1" }), { disclosure: coupang });
-    expect(noReply.replies).toEqual([{ kind: "link", text: `${coupang.text}\n\nhttps://link.coupang.com/a/x` }]);
+    expect(noReply.replies).toEqual([{ kind: "link", text: `${coupang.text}\n\nhttps://link.coupang.com/a/x`, media: null }]);
 
     const bodyLink = buildPlan(base({ kind: "product", linkUrl: "https://link.coupang.com/a/x", linkPosition: "body", disclosureId: "d1" }), { disclosure: coupang });
     expect(bodyLink.mainText).toBe("본문\n\nhttps://link.coupang.com/a/x");
-    expect(bodyLink.replies).toEqual([{ kind: "disclosure", text: coupang.text }]);
+    expect(bodyLink.replies).toEqual([{ kind: "disclosure", text: coupang.text, media: null }]);
 
     const missing = buildPlan(base({ kind: "product" }));
     expect(missing.issues.some((i) => i.field === "disclosure")).toBe(true);
+  });
+
+  it("댓글 사진: 직접 붙이거나 본문 첫 사진을 첫 댓글에 붙인다", () => {
+    const own = buildPlan(base({ replies: [{ text: "", media: img(9) }, ""] }));
+    expect(own.replies).toEqual([{ kind: "user", text: "", media: img(9) }]); // 빈 댓글은 빠지고 사진만 있는 댓글은 남음
+
+    const main = buildPlan(
+      base({ kind: "product", media: [img(1), img(2)], linkUrl: "https://link.coupang.com/a/x", disclosureId: "d1", firstReplyMainMedia: true }),
+      { disclosure: coupang },
+    );
+    expect(main.replies[0].media).toEqual(img(1));
+    expect(main.issues.some((i) => i.message.includes("미리보기 카드"))).toBe(false);
+
+    const off = buildPlan(base({ media: [img(1)], linkUrl: "https://x.com/a", firstReplyMainMedia: false }));
+    expect(off.replies[0].media).toBeNull();
+    expect(off.issues.some((i) => i.message.includes("미리보기 카드"))).toBe(true);
   });
 
   it("reply over 500 is an error", () => {

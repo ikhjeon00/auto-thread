@@ -3,11 +3,11 @@
  * 작성 화면(미리보기·검사)과 서버(저장·발행)가 같은 함수를 쓴다.
  */
 import { THREADS_TEXT_LIMIT, countThreadsChars } from "@/lib/threads/text";
-import type { Compose, DisclosurePosition, LinkPosition } from "./schema";
+import type { Compose, DisclosurePosition, LinkPosition, MediaItem } from "./schema";
 
 export type DisclosureLite = { id: string; name: string; text: string; match_domains: string[]; default_position: DisclosurePosition };
 
-export type PlannedReply = { text: string; kind: "user" | "link" | "disclosure" };
+export type PlannedReply = { text: string; kind: "user" | "link" | "disclosure"; media: MediaItem | null };
 
 export type Issue = { level: "error" | "warn"; field: string; message: string };
 
@@ -76,17 +76,19 @@ export function buildPlan(
   const linkPosition: LinkPosition | null = link ? (hasMedia ? "first_reply" : c.linkPosition) : null;
 
   let mainText = c.text.trim();
-  const replies: PlannedReply[] = c.replies.map((t) => t.trim()).filter(Boolean).map((text) => ({ text, kind: "user" }));
+  const replies: PlannedReply[] = c.replies
+    .map((r) => ({ text: r.text.trim(), kind: "user" as const, media: r.media ?? null }))
+    .filter((r) => r.text || r.media);
   let linkReplyIdx = -1;
 
   if (link) {
     if (linkPosition === "body") {
       mainText = join(mainText, link);
     } else if (replies.length > 0) {
-      replies[0] = { text: join(replies[0].text, link), kind: "link" };
+      replies[0] = { ...replies[0], text: join(replies[0].text, link), kind: "link" };
       linkReplyIdx = 0;
     } else {
-      replies.unshift({ text: link, kind: "link" });
+      replies.unshift({ text: link, kind: "link", media: null });
       linkReplyIdx = 0;
     }
   }
@@ -98,7 +100,7 @@ export function buildPlan(
     if (replies.length > 0) {
       replies[0] = { ...replies[0], text: join(disclosure.text, replies[0].text) };
     } else {
-      replies.unshift({ text: disclosure.text, kind: "disclosure" });
+      replies.unshift({ text: disclosure.text, kind: "disclosure", media: null });
     }
   } else if (disclosure) {
     disclosurePosition = c.disclosurePosition;
@@ -111,8 +113,13 @@ export function buildPlan(
     } else if (disclosurePosition === "link_reply") {
       replies[linkReplyIdx] = { ...replies[linkReplyIdx], text: join(replies[linkReplyIdx].text, disclosure.text) };
     } else {
-      replies.splice(linkReplyIdx >= 0 ? linkReplyIdx + 1 : 0, 0, { text: disclosure.text, kind: "disclosure" });
+      replies.splice(linkReplyIdx >= 0 ? linkReplyIdx + 1 : 0, 0, { text: disclosure.text, kind: "disclosure", media: null });
     }
+  }
+
+  // 첫 댓글에 본문 첫 사진 붙이기 (댓글에 직접 넣은 사진이 있으면 그것을 우선)
+  if (c.firstReplyMainMedia && hasMedia && replies.length > 0 && !replies[0].media) {
+    replies[0] = { ...replies[0], media: c.media[0] };
   }
 
   const mediaType: PublishPlan["mediaType"] = !hasMedia
@@ -138,6 +145,14 @@ export function buildPlan(
     if (n > THREADS_TEXT_LIMIT) issues.push({ level: "error", field: `reply.${i}`, message: `${i + 1}번째 댓글이 ${THREADS_TEXT_LIMIT}자를 넘었습니다(${n}자).` });
   });
   const linkAttachment = link && linkPosition === "body" && !hasMedia ? link : null;
+  const textOnlyLinkReply = replies.findIndex((r) => !r.media && extractUrls(r.text).length > 0);
+  if (textOnlyLinkReply >= 0) {
+    issues.push({
+      level: "warn",
+      field: `reply.${textOnlyLinkReply}`,
+      message: `${textOnlyLinkReply + 1}번째 댓글은 글자만 있어서 링크 미리보기 카드가 붙습니다. 사진을 붙이면 링크만 표시됩니다.`,
+    });
+  }
   const uniqueLinks = new Set([...extractUrls(mainText), ...(linkAttachment ? [linkAttachment] : [])]);
   if (uniqueLinks.size > MAX_LINKS) {
     issues.push({ level: "error", field: "text", message: `본문의 링크는 ${MAX_LINKS}개 이하여야 합니다(현재 ${uniqueLinks.size}개).` });
