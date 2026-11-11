@@ -6,6 +6,7 @@ import { PoolDetail, type PoolItemView } from "@/components/pools/pool-detail";
 import type { PoolFormValue } from "@/components/pools/pool-form";
 import { db } from "@/lib/db/admin";
 import { poolStocks } from "@/lib/pool/pick";
+import { poolItemToContent } from "@/lib/compose/schema";
 
 export const metadata = { title: "글 창고 · AUTO THREAD" };
 export const dynamic = "force-dynamic";
@@ -25,7 +26,7 @@ export default async function PoolPage({ params, searchParams }: { params: Promi
 
   let itemsQ = db()
     .from("pool_items")
-    .select("id, text, first_reply, topic_tag, category, status, weight, source, persona_tags, created_at", { count: "exact" })
+    .select("id, text, first_reply, topic_tag, category, status, weight, source, persona_tags, created_at, media, compose", { count: "exact" })
     .eq("pool_id", id)
     .order("created_at", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
@@ -57,7 +58,17 @@ export default async function PoolPage({ params, searchParams }: { params: Promi
         stock={stock}
         accounts={(accRes.data ?? []) as { id: string; username: string }[]}
         generators={(genRes.data ?? []) as { id: string; name: string; kind: string }[]}
-        items={(itemsRes.data ?? []) as PoolItemView[]}
+        items={((itemsRes.data ?? []) as (Omit<PoolItemView, "media_count" | "reply_count" | "has_link"> & { media: unknown[] | null; compose: unknown })[]).map(
+          ({ media, compose, ...i }) => {
+            const c = poolItemToContent({ ...i, compose });
+            return {
+              ...i,
+              media_count: (media?.length ?? 0) || c.media.length,
+              reply_count: c.replies.filter((r) => r.text.trim() || r.media).length,
+              has_link: !!c.linkUrl,
+            };
+          },
+        )}
         total={itemsRes.count ?? 0}
         page={page}
         pageCount={Math.max(1, Math.ceil((itemsRes.count ?? 0) / PAGE_SIZE))}

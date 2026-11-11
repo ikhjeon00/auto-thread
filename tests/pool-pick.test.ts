@@ -117,3 +117,27 @@ describe("jobs: 창고 AI 일괄 생성", () => {
     expect(fdb.rows("notifications").some((n) => String(n.message).includes("창고가 삭제되었습니다"))).toBe(true);
   });
 });
+
+describe("창고 글 전체 내용", () => {
+  it("compose 가 있으면 사진·댓글·링크까지 그대로, 없으면 본문·첫 댓글·주제로 만든다", async () => {
+    const media = [{ storagePath: "assets/x/1.jpg", publicUrl: "https://e.com/1.jpg", mediaType: "image" }];
+    fdb.rows("pool_items").splice(0);
+    fdb.rows("pool_items").push(
+      item("full", "상품", {
+        compose: { kind: "product", text: "청소기 후기", media, replies: [{ text: "써 본 사람", media: null }, { text: "둘째", media: null }], linkUrl: "https://link.coupang.com/a/x", isAiLabel: true },
+      }),
+    );
+    const r = await pickPoolItem(A);
+    expect(r.item?.content).toMatchObject({ kind: "product", text: "청소기 후기", media, linkUrl: "https://link.coupang.com/a/x", isAiLabel: true });
+    expect(r.item?.content.replies).toHaveLength(2);
+
+    const { poolItemToContent } = await import("@/lib/compose/schema");
+    expect(poolItemToContent({ text: "간단한 글", first_reply: "댓글", topic_tag: "일상", compose: null })).toMatchObject({
+      text: "간단한 글",
+      replies: [{ text: "댓글", media: null }],
+      topicTag: "일상",
+      media: [],
+      linkUrl: null,
+    });
+  });
+});

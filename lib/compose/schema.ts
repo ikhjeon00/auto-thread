@@ -87,3 +87,39 @@ export const emptyCompose = (accountId = ""): Compose => ({
   aiMeta: null,
   poolItemId: null,
 });
+
+/** 창고 글 내용: 글 작성에서 계정·작성 방법 등을 뺀 부분 */
+export const poolContentSchema = composeSchema.pick({
+  kind: true,
+  text: true,
+  media: true,
+  replies: true,
+  firstReplyMainMedia: true,
+  linkUrl: true,
+  linkPosition: true,
+  topicTag: true,
+  disclosureId: true,
+  disclosurePosition: true,
+  isAiLabel: true,
+});
+export type PoolContent = z.output<typeof poolContentSchema>;
+
+/** 예전(간단한) 창고 글 → 글 작성 형태 */
+export function poolItemToContent(item: { text: string; first_reply: string | null; topic_tag: string | null; compose?: unknown }): PoolContent {
+  const parsed = item.compose ? poolContentSchema.safeParse(item.compose) : null;
+  if (parsed?.success) return parsed.data;
+  const base = emptyCompose();
+  return {
+    kind: base.kind,
+    text: item.text,
+    media: [],
+    replies: item.first_reply ? [{ text: item.first_reply, media: null }] : [],
+    firstReplyMainMedia: false,
+    linkUrl: null,
+    linkPosition: "body",
+    topicTag: item.topic_tag,
+    disclosureId: null,
+    disclosurePosition: "link_reply",
+    isAiLabel: false,
+  };
+}

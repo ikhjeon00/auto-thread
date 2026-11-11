@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
 import { db } from "@/lib/db/admin";
 import { savePost } from "@/lib/compose/save";
-import type { ComposeInput } from "@/lib/compose/schema";
+import type { ComposeInput, PoolContent } from "@/lib/compose/schema";
 import { checkSchedule, type ScheduleCheck } from "@/lib/scheduler/check";
 import { pickOrGenerate, releasePoolItem } from "@/lib/pool/pick";
 
@@ -152,7 +152,7 @@ export async function savePersonaAction(accountId: string, input: PersonaInput):
 
 // ---------------------------------------------------------------- 글 창고에서 가져오기
 
-export type PoolPick = { id: string; poolName: string; text: string; first_reply: string | null; topic_tag: string | null; category: string | null };
+export type PoolPick = { id: string; poolName: string; category: string | null; content: PoolContent };
 
 /** 계정에 맞는 창고 글을 랜덤으로 하나 뽑아 배정한다. 이전에 뽑은 글이 있으면 돌려놓는다 */
 export async function pickFromPoolAction(accountId: string, opts: { poolId?: string | null; previousItemId?: string | null }): Promise<Result<PoolPick>> {
@@ -163,8 +163,8 @@ export async function pickFromPoolAction(accountId: string, opts: { poolId?: str
     const r = await pickOrGenerate(acc, { poolId: opts.poolId ?? null, excludeIds: prev ? [prev] : [] });
     if (prev) await releasePoolItem(prev);
     if (!r.item) throw new Error(r.reason);
-    const { id, poolName, text, first_reply, topic_tag, category } = r.item;
-    return { ok: true, data: { id, poolName, text, first_reply, topic_tag, category } };
+    const { id, poolName, category, content } = r.item;
+    return { ok: true, data: { id, poolName, category, content } };
   } catch (e) {
     return fail(e);
   }

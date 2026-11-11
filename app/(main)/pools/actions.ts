@@ -6,6 +6,10 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
 import { db } from "@/lib/db/admin";
 import { enqueueJob, runJobs } from "@/lib/jobs";
+import { buildPlan, hasErrors } from "@/lib/compose/plan";
+import { emptyCompose, poolContentSchema } from "@/lib/compose/schema";
+import { loadDisclosure } from "@/lib/compose/save";
+import { getSettings } from "@/lib/settings";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 const fail = (e: unknown): { ok: false; error: string } => ({
@@ -85,41 +89,6 @@ export async function deletePoolAction(id: string): Promise<Result> {
 }
 
 // ---------------------------------------------------------------- 글
-
-const itemInput = z.object({
-  text: z.string().trim().min(1, "본문을 입력하세요.").max(5000),
-  first_reply: z.string().trim().max(5000).nullable().optional().transform((v) => v || null),
-  topic_tag: z.string().trim().max(50).nullable().optional().transform((v) => (v ? v.replace(/^#/, "") : null)),
-  category: z.string().trim().max(30).nullable().optional().transform((v) => v || null),
-  weight: z.coerce.number().int().min(1).max(100).default(1),
-  persona_tags: z.array(z.string().trim().min(1).max(20)).max(10).default([]),
-});
-export type ItemInput = z.input<typeof itemInput>;
-
-export async function addItemAction(poolId: string, input: ItemInput): Promise<Result> {
-  try {
-    await requireSession();
-    const pid = uuid.parse(poolId);
-    const { error } = await db().from("pool_items").insert({ ...itemInput.parse(input), pool_id: pid, status: "available", source: "manual" });
-    if (error) throw new Error(error.message);
-    refresh(pid);
-    return { ok: true, data: undefined };
-  } catch (e) {
-    return fail(e);
-  }
-}
-
-export async function updateItemAction(poolId: string, itemId: string, input: ItemInput): Promise<Result> {
-  try {
-    await requireSession();
-    const { error } = await db().from("pool_items").update(itemInput.parse(input)).eq("id", uuid.parse(itemId)).eq("pool_id", uuid.parse(poolId));
-    if (error) throw new Error(error.message);
-    refresh(poolId);
-    return { ok: true, data: undefined };
-  } catch (e) {
-    return fail(e);
-  }
-}
 
 const bulkStatus = z.enum(["available", "archived", "pending"]);
 
@@ -244,6 +213,62 @@ export async function getJobAction(jobId: string): Promise<Result<JobStatus>> {
     const { data, error } = await db().from("jobs").select("status, progress, total, error, result").eq("id", uuid.parse(jobId)).single();
     if (error) throw new Error(error.message);
     return { ok: true, data: data as JobStatus };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ---------------------------------------------------------------- 창고 글 편집(글 작성과 같은 형태)
+
+const itemMeta = z.object({
+  category: z.string().trim().max(30).nullable().optional().transform((v) => v || null),
+  weight: z.coerce.number().int().min(1).max(100).default(1),
+  status: z.enum(["pending", "available", "archived"]).optional(),
+});
+
+/**
+ * 창고 글 저장. 본문·첫 댓글·주제·미디어는 목록·검색·AI 비교용으로 따로도 저장하고,
+ * 전체 내용은 compose 에 둔다(꺼낼 때 그대로 글 작성에 들어간다).
+ */
+export async function savePoolContentAction(
+  poolId: string,
+  itemId: string | null,
+  content: unknown,
+  meta: z.input<typeof itemMeta>,
+): Promise<Result<{ id: string }>> {
+  try {
+    await requireSession();
+    const pid = uuid.parse(poolId);
+    const c = poolContentSchema.parse(content);
+    const m = itemMeta.parse(meta);
+    const [disclosure, settings] = await Promise.all([loadDisclosure(c.disclosureId), getSettings()]);
+    const plan = buildPlan({ ...emptyCompose(), ...c }, { disclosure, bannedWords: settings.bannedWords });
+    if (hasErrors(plan)) throw new Error(plan.issues.filter((i) => i.level === "error").map((i) => i.message).join(" / "));
+
+    const row = {
+      text: c.text.trim(),
+      first_reply: c.replies[0]?.text.trim() || null,
+      topic_tag: c.topicTag,
+      media: c.media,
+      compose: c,
+      category: m.category,
+      weight: m.weight,
+      ...(m.status ? { status: m.status } : {}),
+    };
+    if (itemId) {
+      const { error } = await db().from("pool_items").update(row).eq("id", uuid.parse(itemId)).eq("pool_id", pid);
+      if (error) throw new Error(error.message);
+      refresh(pid);
+      return { ok: true, data: { id: itemId } };
+    }
+    const { data, error } = await db()
+      .from("pool_items")
+      .insert({ ...row, pool_id: pid, status: m.status ?? "available", source: "manual" })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    refresh(pid);
+    return { ok: true, data: { id: data.id as string } };
   } catch (e) {
     return fail(e);
   }

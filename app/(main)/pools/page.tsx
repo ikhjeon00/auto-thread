@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { NewPool } from "@/components/pools/new-pool";
+import { PoolCardMenu } from "@/components/pools/pool-card-menu";
 import { db } from "@/lib/db/admin";
 import { poolStocks } from "@/lib/pool/pick";
 import { cn } from "@/lib/utils";
@@ -48,10 +49,14 @@ export default async function PoolsPage() {
             const s = stocks.get(p.id);
             const users = p.pool_accounts.map((a) => a.threads_accounts?.username).filter(Boolean);
             return (
-              <Link key={p.id} href={`/pools/${p.id}`} className="group">
+              <div key={p.id} className="group relative">
+                <div className="absolute top-3 right-3 z-10">
+                  <PoolCardMenu poolId={p.id} name={p.name} />
+                </div>
+                <Link href={`/pools/${p.id}`}>
                 <Card className={cn("h-full transition-shadow group-hover:shadow-md", s?.low && "border-warning/60")}>
                   <CardContent className="flex h-full flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2 pr-10">
                       <div className="min-w-0">
                         <div className="truncate font-semibold">{p.name}</div>
                         {p.description && <div className="line-clamp-1 text-sm text-muted-foreground">{p.description}</div>}
@@ -78,7 +83,8 @@ export default async function PoolsPage() {
                     </div>
                   </CardContent>
                 </Card>
-              </Link>
+                </Link>
+              </div>
             );
           })}
         </div>

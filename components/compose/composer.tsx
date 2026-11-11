@@ -253,13 +253,11 @@ export function Composer({ accounts, disclosures, bannedWords, drafts, initial, 
                 c={c}
                 poolId={poolId}
                 onPick={(pick) =>
+                  // 창고 글 내용 전체(사진·댓글·링크·고지 문구 등)를 그대로 넣는다. 계정·작성 방법은 그대로
                   setC((prev) => ({
                     ...prev,
-                    text: pick.text,
-                    replies: pick.first_reply
-                      ? [{ text: pick.first_reply, media: prev.replies[0]?.media ?? null }, ...prev.replies.slice(1)]
-                      : prev.replies,
-                    topicTag: pick.topic_tag || prev.topicTag,
+                    ...pick.content,
+                    topicTag: pick.content.topicTag || prev.topicTag,
                     poolItemId: pick.id,
                   }))
                 }
@@ -512,16 +510,19 @@ function Section({ no, title, children, aside }: { no: string; title: string; ch
   );
 }
 
-function StepWrite({
+export function StepWrite({
   c,
   set,
   plan,
   disclosures,
+  mediaFolder = "uploads",
 }: {
   c: Compose;
   set: <K extends keyof Compose>(k: K, v: Compose[K]) => void;
   plan: ReturnType<typeof buildPlan>;
   disclosures: ComposerDisclosure[];
+  /** uploads: 1회용(발행 30일 뒤 삭제) / assets: 보관(창고·자료실) */
+  mediaFolder?: "uploads" | "assets";
 }) {
   const hasMedia = c.media.length > 0;
   const mainCount = countThreadsChars(plan.mainText);
@@ -548,7 +549,7 @@ function StepWrite({
       </Card>
 
       <Section no="①" title="사진·영상">
-        <MediaPicker value={c.media} onChange={(v) => set("media", v)} />
+        <MediaPicker folder={mediaFolder} value={c.media} onChange={(v) => set("media", v)} />
       </Section>
 
       <Section no="②" title="댓글" aside={<span className="num text-xs text-muted-foreground">{c.replies.length} / {MAX_REPLIES}</span>}>
@@ -581,7 +582,7 @@ function StepWrite({
                 {usesMain ? (
                   <p className="text-xs text-muted-foreground">본문 첫 사진이 이 댓글에 붙습니다.</p>
                 ) : (
-                  <MediaPicker compact max={1} value={r.media ? [r.media] : []} onChange={(v) => update({ media: v[0] ?? null })} />
+                  <MediaPicker folder={mediaFolder} compact max={1} value={r.media ? [r.media] : []} onChange={(v) => update({ media: v[0] ?? null })} />
                 )}
               </div>
             );
@@ -711,7 +712,7 @@ function StepWrite({
   );
 }
 
-function Checks({ plan, similar }: { plan: ReturnType<typeof buildPlan>; similar: { score: number; text: string } | null }) {
+export function Checks({ plan, similar }: { plan: ReturnType<typeof buildPlan>; similar: { score: number; text: string } | null }) {
   const issues = [...plan.issues];
   if (similar) {
     issues.push({
@@ -739,7 +740,7 @@ function Checks({ plan, similar }: { plan: ReturnType<typeof buildPlan>; similar
   );
 }
 
-function Preview({ account, plan, c }: { account: ComposerAccount | null; plan: ReturnType<typeof buildPlan>; c: Compose }) {
+export function Preview({ account, plan, c }: { account: ComposerAccount | null; plan: ReturnType<typeof buildPlan>; c: Compose }) {
   return (
     <ThreadPreview
       username={account?.username ?? ""}

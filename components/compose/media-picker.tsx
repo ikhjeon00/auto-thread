@@ -15,11 +15,13 @@ export function MediaPicker({
   onChange,
   max = MAX_MEDIA,
   compact = false,
+  folder = "uploads",
 }: {
   value: MediaItem[];
   onChange: (v: MediaItem[]) => void;
   max?: number;
   compact?: boolean;
+  folder?: "uploads" | "assets";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<Uploading[]>([]);
@@ -53,7 +55,7 @@ export function MediaPicker({
       try {
         const prepared = await prepareFile(f);
         prepared.warnings.forEach((w) => msgs.push({ level: "warn", text: `${f.name}: ${w}` }));
-        const [item] = await uploadPrepared([prepared]);
+        const [item] = await uploadPrepared([prepared], folder);
         onChange([...latest.current, item]);
       } catch (e) {
         msgs.push({ level: "error", text: e instanceof Error ? e.message : `${f.name}: 업로드 실패` });

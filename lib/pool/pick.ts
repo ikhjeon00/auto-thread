@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db/admin";
 import { notify } from "@/lib/notify";
+import { poolItemToContent, type PoolContent } from "@/lib/compose/schema";
 import { eligibleItems, stockDays, weightedPick, type CandidateItem, type Persona, type PersonaFilter, type PoolRule } from "./select";
 
 export type PickedItem = {
@@ -12,6 +13,8 @@ export type PickedItem = {
   topic_tag: string | null;
   category: string | null;
   media: unknown;
+  /** 글 작성 형태 전체(없으면 예전 간단한 글) */
+  content: PoolContent;
 };
 
 type PoolRow = { id: string; name: string; persona_filter: PersonaFilter | null; reuse_cooldown_days: number | null };
@@ -95,7 +98,7 @@ export async function pickPoolItem(accountId: string, opts: { poolId?: string | 
       .update({ status: "reserved", reserved_at: new Date().toISOString(), reserved_account_id: accountId })
       .eq("id", pick.id)
       .eq("status", "available")
-      .select("id, pool_id, text, first_reply, topic_tag, category, media");
+      .select("id, pool_id, text, first_reply, topic_tag, category, media, compose");
     if (reserved?.length) {
       const r = reserved[0];
       return {
@@ -108,6 +111,7 @@ export async function pickPoolItem(accountId: string, opts: { poolId?: string | 
           topic_tag: r.topic_tag as string | null,
           category: r.category as string | null,
           media: r.media,
+          content: poolItemToContent(r as { text: string; first_reply: string | null; topic_tag: string | null; compose: unknown }),
         },
       };
     }
@@ -204,7 +208,7 @@ export async function pickOrGenerate(accountId: string, opts: { poolId?: string 
       reserved_account_id: accountId,
       source: "ai",
     })
-    .select("id, pool_id, text, first_reply, topic_tag, category, media")
+    .select("id, pool_id, text, first_reply, topic_tag, category, media, compose")
     .single();
   if (error) throw new Error(error.message);
   await notify("warn", "stock_empty", `${who}: 창고 글이 없어 AI로 즉석 생성했습니다(창고 「${pools[0].name}」).`, `/pools/${pools[0].id}`);
@@ -219,6 +223,7 @@ export async function pickOrGenerate(accountId: string, opts: { poolId?: string 
       topic_tag: data.topic_tag as string | null,
       category: data.category as string | null,
       media: data.media,
+      content: poolItemToContent(data as { text: string; first_reply: string | null; topic_tag: string | null; compose: unknown }),
     },
   };
 }

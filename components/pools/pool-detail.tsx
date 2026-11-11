@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Archive, Check, ChevronDown, FileUp, Gem, Loader2, Pencil, PenLine, Search, Settings2, Sparkles, Trash2, Undo2 } from "lucide-react";
+import { AlertTriangle, Archive, Check, ChevronDown, FileUp, Gem, Image as ImageIcon, Link2, Loader2, MessageSquare, Pencil, PenLine, Search, Settings2, Sparkles, Trash2, Undo2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,13 +11,10 @@ import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { parseCsv } from "@/lib/csv";
-import { countThreadsChars } from "@/lib/threads/text";
 import { formatKst } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import {
-  addItemAction,
   deleteItemsAction,
   deletePoolAction,
   enqueueFillAction,
@@ -24,7 +22,6 @@ import {
   importBookmarksAction,
   importRowsAction,
   setItemsStatusAction,
-  updateItemAction,
   type JobStatus,
 } from "@/app/(main)/pools/actions";
 import { PoolForm, type PoolFormValue } from "./pool-form";
@@ -40,6 +37,9 @@ export type PoolItemView = {
   source: string;
   persona_tags: string[];
   created_at: string;
+  media_count: number;
+  reply_count: number;
+  has_link: boolean;
 };
 
 type Stock = { available: number; pending: number; reserved: number; used: number; archived: number; dailyNeed: number; days: number | null; low: boolean };
@@ -106,9 +106,27 @@ export function PoolDetail(p: Props) {
                 {p.stock.used} <span className="text-base text-muted-foreground">/ {p.stock.archived}</span>
               </div>
             </div>
-            <Button variant="outline" size="icon" aria-label="창고 설정" onClick={() => setEditing((v) => !v)}>
-              <Settings2 />
-            </Button>
+            <div className="flex flex-col gap-1.5">
+              <Button variant="outline" size="sm" onClick={() => setEditing((v) => !v)}>
+                <Settings2 /> 설정
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                disabled={pending}
+                onClick={() => {
+                  if (!confirm("이 창고와 안의 글을 모두 삭제할까요? 되돌릴 수 없습니다.")) return;
+                  start(async () => {
+                    const r = await deletePoolAction(p.poolId);
+                    if (r.ok) router.push("/pools");
+                    else alert(r.error);
+                  });
+                }}
+              >
+                <Trash2 /> 삭제
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -279,47 +297,15 @@ function AiFill({ poolId, generators, activeJobId }: Props) {
 }
 
 function ManualFill({ poolId }: { poolId: string }) {
-  const router = useRouter();
-  const blank = { text: "", first_reply: "", topic_tag: "", category: "", weight: 1 };
-  const [v, setV] = useState(blank);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [pending, start] = useTransition();
-  const n = countThreadsChars(v.text);
   return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        start(async () => {
-          const r = await addItemAction(poolId, v);
-          setMsg(r.ok ? { ok: true, text: "추가했습니다(사용 가능)." } : { ok: false, text: r.error });
-          if (r.ok) {
-            setV(blank);
-            router.refresh();
-          }
-        });
-      }}
-    >
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="m-text">본문</Label>
-          <span className={cn("num text-xs", n > 500 ? "text-destructive" : "text-muted-foreground")}>{n} / 500</span>
-        </div>
-        <Textarea id="m-text" rows={4} value={v.text} onChange={(e) => setV({ ...v, text: e.target.value })} />
-      </div>
-      <Input placeholder="첫 댓글 (선택)" value={v.first_reply} onChange={(e) => setV({ ...v, first_reply: e.target.value })} />
-      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_100px]">
-        <Input placeholder="커뮤니티 주제 (선택)" value={v.topic_tag} onChange={(e) => setV({ ...v, topic_tag: e.target.value })} />
-        <Input placeholder="분류 (선택, 같은 분류 연속 방지에 사용)" value={v.category} onChange={(e) => setV({ ...v, category: e.target.value })} />
-        <Input type="number" min={1} max={100} className="num" title="가중치(클수록 자주 뽑힘)" value={String(v.weight)} onChange={(e) => setV({ ...v, weight: Number(e.target.value) || 1 })} />
-      </div>
-      <div className="flex items-center justify-end gap-3">
-        {msg && <span className={msg.ok ? "text-sm text-success" : "text-sm text-destructive"}>{msg.text}</span>}
-        <Button type="submit" disabled={pending || !v.text.trim() || n > 500}>
-          추가
-        </Button>
-      </div>
-    </form>
+    <div className="flex flex-wrap items-center gap-3">
+      <Button asChild>
+        <Link href={`/pools/${poolId}/items/new`}>
+          <PenLine /> 새 창고 글 쓰기
+        </Link>
+      </Button>
+      <span className="text-sm text-muted-foreground">글 작성과 같은 화면에서 사진·영상, 댓글, 링크, 고지 문구까지 준비하고 미리보기로 확인합니다.</span>
+    </div>
   );
 }
 
@@ -574,17 +560,38 @@ function ItemsTable(p: Props) {
                       <Badge variant={STATUS_VARIANT[i.status]}>{STATUS_LABEL[i.status]}</Badge>
                       {i.category && <Badge variant="outline">{i.category}</Badge>}
                       {i.topic_tag && <span>#{i.topic_tag}</span>}
-                      {i.first_reply && <span>댓글 있음</span>}
+                      {i.media_count > 0 && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <ImageIcon className="size-3.5" />
+                          {i.media_count}
+                        </span>
+                      )}
+                      {i.reply_count > 0 && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <MessageSquare className="size-3.5" />
+                          {i.reply_count}
+                        </span>
+                      )}
+                      {i.has_link && (
+                        <span className="inline-flex items-center gap-0.5">
+                          <Link2 className="size-3.5" />
+                          링크
+                        </span>
+                      )}
                       {i.weight > 1 && <span>가중치 {i.weight}</span>}
                       <span>{SOURCE_LABEL[i.source] ?? i.source}</span>
                       <span className="num">{formatKst(i.created_at, "M/d HH:mm")}</span>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" aria-label="열기/수정" onClick={() => setOpenId(openId === i.id ? null : i.id)}>
-                    {openId === i.id ? <ChevronDown className="rotate-180" /> : <Pencil />}
+                  <Button variant="ghost" size="icon" aria-label="전체 보기" onClick={() => setOpenId(openId === i.id ? null : i.id)}>
+                    <ChevronDown className={cn("transition-transform", openId === i.id && "rotate-180")} />
+                  </Button>
+                  <Button variant="ghost" size="icon" aria-label="편집" asChild>
+                    <Link href={`/pools/${p.poolId}/items/${i.id}`}>
+                      <Pencil />
+                    </Link>
                   </Button>
                 </div>
-                {openId === i.id && <ItemEditor poolId={p.poolId} item={i} onDone={() => setOpenId(null)} />}
               </li>
             ))}
           </ul>
@@ -605,54 +612,5 @@ function ItemsTable(p: Props) {
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function ItemEditor({ poolId, item, onDone }: { poolId: string; item: PoolItemView; onDone: () => void }) {
-  const router = useRouter();
-  const [v, setV] = useState({
-    text: item.text,
-    first_reply: item.first_reply ?? "",
-    topic_tag: item.topic_tag ?? "",
-    category: item.category ?? "",
-    weight: item.weight,
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const n = countThreadsChars(v.text);
-  return (
-    <div className="flex flex-col gap-2 border-t bg-background px-3 py-3 sm:pl-10">
-      <div className="flex justify-end">
-        <span className={cn("num text-xs", n > 500 ? "text-destructive" : "text-muted-foreground")}>{n} / 500</span>
-      </div>
-      <Textarea rows={4} value={v.text} onChange={(e) => setV({ ...v, text: e.target.value })} />
-      <Input placeholder="첫 댓글" value={v.first_reply} onChange={(e) => setV({ ...v, first_reply: e.target.value })} />
-      <div className="grid gap-2 sm:grid-cols-[1fr_1fr_100px]">
-        <Input placeholder="커뮤니티 주제" value={v.topic_tag} onChange={(e) => setV({ ...v, topic_tag: e.target.value })} />
-        <Input placeholder="분류" value={v.category} onChange={(e) => setV({ ...v, category: e.target.value })} />
-        <Input type="number" min={1} max={100} className="num" title="가중치" value={String(v.weight)} onChange={(e) => setV({ ...v, weight: Number(e.target.value) || 1 })} />
-      </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onDone}>
-          닫기
-        </Button>
-        <Button
-          size="sm"
-          disabled={pending || !v.text.trim() || n > 500}
-          onClick={() =>
-            start(async () => {
-              const r = await updateItemAction(poolId, item.id, v);
-              if (r.ok) {
-                onDone();
-                router.refresh();
-              } else setError(r.error);
-            })
-          }
-        >
-          저장
-        </Button>
-      </div>
-    </div>
   );
 }
