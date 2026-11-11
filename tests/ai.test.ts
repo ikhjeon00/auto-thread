@@ -132,3 +132,26 @@ describe("prompt & helpers", () => {
     expect(costUsd({ input: 1, output: 1, cached: 0, reasoning: 0 }, undefined)).toBeNull();
   });
 });
+
+describe("API 키 저장", () => {
+  it("설정에서 등록한 키는 암호화돼 저장되고 환경변수보다 우선한다", async () => {
+    const { randomBytes } = await import("node:crypto");
+    process.env.TOKEN_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+    process.env.GEMINI_API_KEY = "env-gemini-key-1234";
+    const { saveStoredKey, getApiKey, keyStatuses } = await import("@/lib/ai/config");
+
+    expect(await getApiKey("gemini")).toBe("env-gemini-key-1234");
+    expect((await keyStatuses()).gemini).toMatchObject({ source: "env", last4: "1234" });
+    expect(await getApiKey("openai")).toBeNull();
+
+    await saveStoredKey("gemini", "AIza-settings-key-9876");
+    const raw = JSON.stringify(fdb.rows("app_settings").find((r) => r.key === "ai_keys")!.value);
+    expect(raw).not.toContain("AIza-settings-key"); // 평문 저장 금지
+    expect(await getApiKey("gemini")).toBe("AIza-settings-key-9876");
+    expect((await keyStatuses()).gemini).toMatchObject({ source: "settings", last4: "9876" });
+
+    await saveStoredKey("gemini", null);
+    expect(await getApiKey("gemini")).toBe("env-gemini-key-1234");
+    delete process.env.GEMINI_API_KEY;
+  });
+});

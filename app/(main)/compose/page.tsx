@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { Composer, type AiStatus, type ComposerAccount, type ComposerDisclosure, type ComposerGenerator } from "@/components/compose/composer";
 import type { PersonaInput } from "./actions";
-import { getAiSettings, keyConfigured } from "@/lib/ai/config";
+import { getAiSettings, keyStatuses } from "@/lib/ai/config";
 import type { Provider } from "@/lib/ai/types";
 import type { DraftItem } from "@/components/compose/drafts-menu";
 import { composeSchema, emptyCompose, type Compose } from "@/lib/compose/schema";
@@ -32,6 +32,8 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
     db().from("personas").select("account_id, age_group, gender, job, tone"),
     getAiSettings().catch(() => null),
   ]);
+  const keys = await keyStatuses();
+  const keyConfigured = (p: Provider) => !!keys[p].source;
 
   const generators = (genRes.data ?? []) as ComposerGenerator[];
   const personas: Record<string, PersonaInput> = Object.fromEntries(
@@ -45,7 +47,7 @@ export default async function ComposePage({ searchParams }: { searchParams: Prom
     : {
         ready: false,
         message: !keyConfigured("openai") && !keyConfigured("gemini")
-          ? "AI 키가 없습니다. Vercel 환경변수에 OPENAI_API_KEY 또는 GEMINI_API_KEY를 넣고 다시 배포하세요."
+          ? "AI 키가 없습니다. 설정 > AI에서 OpenAI 또는 Gemini 키를 등록하세요."
           : "기본 AI 모델을 아직 고르지 않았습니다.",
       };
 

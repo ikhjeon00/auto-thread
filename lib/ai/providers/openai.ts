@@ -7,8 +7,7 @@ export class OpenAiProvider implements AiProvider {
   readonly name = "openai" as const;
   private client: OpenAI;
 
-  constructor(apiKey = process.env.OPENAI_API_KEY) {
-    if (!apiKey) throw new AiError("OPENAI_API_KEY 환경변수가 없습니다. Vercel 환경변수에 OpenAI 키를 넣고 다시 배포하세요.", "no_key");
+  constructor(apiKey: string) {
     this.client = new OpenAI({ apiKey, timeout: 90_000, maxRetries: 1 });
   }
 

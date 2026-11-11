@@ -7,8 +7,7 @@ export class GeminiProvider implements AiProvider {
   readonly name = "gemini" as const;
   private ai: GoogleGenAI;
 
-  constructor(apiKey = process.env.GEMINI_API_KEY) {
-    if (!apiKey) throw new AiError("GEMINI_API_KEY 환경변수가 없습니다. Vercel 환경변수에 Gemini 키를 넣고 다시 배포하세요.", "no_key");
+  constructor(apiKey: string) {
     this.ai = new GoogleGenAI({ apiKey });
   }
 

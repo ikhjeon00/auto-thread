@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require";
 import { db } from "@/lib/db/admin";
-import { getProvider, keyConfigured } from "@/lib/ai/config";
+import { getProvider, saveStoredKey } from "@/lib/ai/config";
 import { PROVIDERS } from "@/lib/ai/types";
 
 export type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -20,14 +20,48 @@ function refresh() {
   revalidatePath("/compose");
 }
 
+// ---------------------------------------------------------------- API 키
+
+/** 키를 등록한다. 저장 전에 모델 목록을 불러와 키가 맞는지 확인한다 */
+export async function saveApiKeyAction(p: string, key: string): Promise<Result<{ models: number }>> {
+  try {
+    await requireSession();
+    const name = provider.parse(p);
+    const k = z
+      .string()
+      .trim()
+      .min(10, "키가 너무 짧습니다.")
+      .max(500)
+      .regex(/^\S+$/, "키에 공백이 들어 있습니다.")
+      .parse(key);
+    if (!process.env.TOKEN_ENCRYPTION_KEY) throw new Error("TOKEN_ENCRYPTION_KEY 환경변수가 없어 키를 안전하게 저장할 수 없습니다.");
+    const models = await (await getProvider(name, k)).listModels();
+    await saveStoredKey(name, k);
+    refresh();
+    return { ok: true, data: { models: models.length } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteApiKeyAction(p: string): Promise<Result> {
+  try {
+    await requireSession();
+    await saveStoredKey(provider.parse(p), null);
+    refresh();
+    return { ok: true, data: undefined };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 // ---------------------------------------------------------------- 모델·단가
 
 export async function listModelsAction(p: string): Promise<Result<string[]>> {
   try {
     await requireSession();
     const name = provider.parse(p);
-    if (!keyConfigured(name)) throw new Error(`${name === "openai" ? "OPENAI_API_KEY" : "GEMINI_API_KEY"} 환경변수가 없습니다.`);
-    return { ok: true, data: await getProvider(name).listModels() };
+    return { ok: true, data: await (await getProvider(name)).listModels() };
   } catch (e) {
     return fail(e);
   }

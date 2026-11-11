@@ -12,7 +12,7 @@ import { GeneratorsSection, type GeneratorView } from "@/components/settings/gen
 import { FormatsSection, TopicsSection, type FormatView, type TopicView } from "@/components/settings/topics-section";
 import type { AccountView, GroupView } from "@/components/settings/types";
 import { DEFAULT_SETTINGS, getSettings } from "@/lib/settings";
-import { getAiSettings, providerStatus } from "@/lib/ai/config";
+import { getAiSettings, keyStatuses } from "@/lib/ai/config";
 import { monthlyAiCost } from "@/lib/ai/generate";
 import { priceKey } from "@/lib/ai/pricing";
 import { db } from "@/lib/db/admin";
@@ -115,11 +115,12 @@ async function ContentTab() {
 }
 
 async function AiTab() {
-  const [ai, genRes, monthly, logRes] = await Promise.all([
+  const [ai, genRes, monthly, logRes, keys] = await Promise.all([
     getAiSettings(),
     db().from("generators").select("id, name, version, kind, system_prompt, user_prompt_template, provider, model, example_count, is_active").order("created_at"),
     monthlyAiCost(),
     db().from("generation_logs").select("provider, model").order("created_at", { ascending: false }).limit(200),
+    keyStatuses(),
   ]);
   const generators = (genRes.data ?? []) as GeneratorView[];
   const used = [
@@ -131,7 +132,7 @@ async function AiTab() {
 
   return (
     <>
-      <AiSection keys={providerStatus()} defaults={ai.defaults} pricing={ai.pricing} usedModels={[...new Set(used)]} monthly={monthly} />
+      <AiSection keys={keys} defaults={ai.defaults} pricing={ai.pricing} usedModels={[...new Set(used)]} monthly={monthly} />
       <GeneratorsSection items={generators} />
     </>
   );

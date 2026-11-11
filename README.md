@@ -109,7 +109,7 @@ openssl rand -base64 32   # TOKEN_ENCRYPTION_KEY
 | `CRON_SECRET` | M1 | `/api/cron/*` 호출 인증 |
 | `THREADS_APP_ID` / `THREADS_APP_SECRET` / `THREADS_REDIRECT_URI` | M2 | Threads 앱 정보 |
 | `TOKEN_ENCRYPTION_KEY` | M2 | Threads 토큰 암호화(AES-256-GCM) |
-| `OPENAI_API_KEY` / `GEMINI_API_KEY` | M5 | AI 생성. 쓰는 회사의 키만 넣으면 된다. 모델은 앱의 설정 > AI 에서 고른다 |
+| `OPENAI_API_KEY` / `GEMINI_API_KEY` | M5 | (선택) AI 키. **앱의 설정 > AI 에서 등록하는 것을 권장**하며, 거기 등록한 키가 우선한다 |
 | `APP_TIMEZONE` | – | 기본 `Asia/Seoul` |
 
 ## 3. 로컬 실행
@@ -159,7 +159,8 @@ http://localhost:3000 접속 → `APP_PASSWORD`로 로그인.
 
 - 지원 회사: **OpenAI(GPT)**, **Google Gemini**. `lib/ai/providers/*` 에 회사별 구현이 있고, 앱 코드는 `lib/ai` 의 공통 형태만 쓴다.
 - 설정 > AI
-  - 연결 상태(키 유무), 「모델 목록」으로 그 회사에서 쓸 수 있는 모델 이름을 불러온다.
+  - **API 키 등록**: 키를 붙여넣고 저장하면 모델 목록을 불러와 키가 맞는지 확인한 뒤 `TOKEN_ENCRYPTION_KEY`로 암호화해 `app_settings.ai_keys`에 저장한다. 다시 배포할 필요 없음. 화면에는 끝 4자리만 보인다. 등록한 키가 없으면 Vercel 환경변수 키를 쓴다.
+  - 「모델 목록」으로 그 회사에서 쓸 수 있는 모델 이름을 불러온다.
   - 기본 모델: 글쓰기용 / 사진 이해용(수익화 농장).
   - 모델 단가: 1M 토큰당 USD를 **직접 입력**한다(회사·모델마다 다르고 자주 바뀐다). 비우면 비용을 계산하지 않는다.
   - 이번 달 AI 비용(입력한 단가로 계산한 추정치), AI 생성기 추가·수정·복제(새 버전)·삭제. 생성기마다 회사·모델을 따로 고를 수 있다.

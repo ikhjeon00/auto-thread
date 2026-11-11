@@ -87,7 +87,7 @@ export async function generatePosts(input: GenerateInput): Promise<GenerateResul
   ]);
 
   const model = resolveModel(gen, hasImages ? ai.defaults.vision : ai.defaults.text);
-  const provider = getProvider(model.provider);
+  const provider = await getProvider(model.provider);
   const topic = await pickTopic(input.topic);
   const fmt = pickRandom((formatsRes.data ?? []) as { name: string; instruction: string }[]);
   const format = fmt ? `${fmt.name}: ${fmt.instruction}` : "자유 형식";
