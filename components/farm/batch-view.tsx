@@ -39,6 +39,8 @@ const VARIANT: Record<string, "warning" | "success" | "outline" | "default" | "e
   cancelled: "default",
 };
 
+const SELECTABLE = ["review", "scheduled", "failed", "draft"];
+
 export function BatchView(p: { batchId: string; jobId: string | null; mode: string; cancelled: boolean; skipped: number; counts: Record<string, number>; posts: BatchPost[]; status: string | null }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -75,6 +77,8 @@ export function BatchView(p: { batchId: string; jobId: string | null; mode: stri
       router.refresh();
     });
   const ids = [...sel];
+  const selectable = p.posts.filter((x) => SELECTABLE.includes(x.status));
+  const allSelected = selectable.length > 0 && selectable.every((x) => sel.has(x.id));
 
   return (
     <div className="flex flex-col gap-4">
@@ -153,6 +157,23 @@ export function BatchView(p: { batchId: string; jobId: string | null; mode: stri
         </Card>
       ) : (
         <Card className="gap-0 py-0">
+          {selectable.length > 0 && (
+            <label className="flex cursor-pointer items-center gap-3 border-b bg-muted/40 px-4 py-2.5 text-sm">
+              <input
+                type="checkbox"
+                className="size-4 accent-[var(--primary)]"
+                checked={allSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = sel.size > 0 && !allSelected;
+                }}
+                onChange={() => setSel(allSelected ? new Set() : new Set(selectable.map((x) => x.id)))}
+              />
+              <span className="font-medium">{sel.size ? `${sel.size}개 선택` : "전체 선택"}</span>
+              <span className="text-xs text-muted-foreground">
+                (선택 가능한 글 <span className="num">{selectable.length}</span>개)
+              </span>
+            </label>
+          )}
           <ul className="divide-y">
             {p.posts.map((x) => {
               const editable = ["review", "scheduled", "failed"].includes(x.status) && !x.pickAtPublish;
@@ -162,7 +183,7 @@ export function BatchView(p: { batchId: string; jobId: string | null; mode: stri
                     type="checkbox"
                     className="mt-1 size-4 accent-[var(--primary)]"
                     aria-label="선택"
-                    disabled={!["review", "scheduled", "failed", "draft"].includes(x.status)}
+                    disabled={!SELECTABLE.includes(x.status)}
                     checked={sel.has(x.id)}
                     onChange={() => {
                       const n = new Set(sel);
