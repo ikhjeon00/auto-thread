@@ -328,3 +328,4 @@ supabase/cron.sql         pg_cron 주기 작업 등록
 
 - shadcn/ui 컴포넌트는 `components.json` 설정에 맞춰 직접 추가했다. 추가 컴포넌트는 `npx shadcn@latest add <이름>`으로 넣을 수 있다.
 - 디자인 토큰은 `app/globals.css`의 `:root`에 있다(배경 #F7F5F0, 포인트 #E8590C).
+- 다른 사람이 자기 계정에서 이 앱을 처음부터 새로 만들게 하려면 `docs/BUILD_FROM_SCRATCH.md` 한 파일을 주면 된다(코드 없이 기능 명세·DB SQL·핵심 규칙 참고 구현·설치 안내 포함).
