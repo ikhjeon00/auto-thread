@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db/admin";
 import { getAiSettings, keyStatuses } from "@/lib/ai/config";
-import { todayKst, addDays } from "@/lib/calendar";
+import { todayKst } from "@/lib/calendar";
 import { DEFAULT_SETTINGS, getSettings } from "@/lib/settings";
 import type { FollowerTier } from "@/lib/scheduler/slots";
 import type { FarmAccount, FarmGenerator, FarmPool } from "@/components/farm/farm-form";
@@ -43,7 +43,7 @@ export async function loadFarmPageData(kind: "growth" | "monetize") {
     tiers: ((tierRes.data?.value as FollowerTier[] | undefined) ?? [{ min: 0, max: null, daily_posts: 3 }]) as FollowerTier[],
     settings,
     aiReady,
-    tomorrow: addDays(todayKst(), 1),
+    today: todayKst(),
     batches: await loadBatches(kind),
   };
 }

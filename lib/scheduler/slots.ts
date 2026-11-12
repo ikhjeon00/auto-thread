@@ -1,6 +1,6 @@
 /**
  * 농장 시간 배치(작업지시서 8장, 순수 함수)
- *  - 활동 시간대를 하루 게시 수로 균등 분할, 각 슬롯에 ±(간격의 30%, 최대 20분) 랜덤 오차
+ *  - 활동 시간대(오늘이면 지금 이후 남은 부분)를 하루 게시 수로 균등 분할, 각 슬롯에 ±(간격의 30%, 최대 20분) 랜덤 오차
  *  - 같은 계정 글은 최소 sameAccountGapMinutes(기본 60분) 간격
  *  - 전체 계정 기준 minGapMinutes(설정, 0이면 제한 없음) 이상
  *  - 계정별 하루 상한, 전역 하루 상한을 넘지 않음
@@ -49,9 +49,14 @@ export function planSlots(input: PlanInput): PlanResult {
   let seq = 0;
 
   for (const day of input.days) {
-    const winStart = input.toEpoch(day, input.activeStart);
+    // 오늘처럼 이미 시작된 날은 지금 이후(notBefore)의 남은 시간대에 고르게 나눈다
+    const winStart = Math.max(input.toEpoch(day, input.activeStart), Math.ceil(input.notBefore / MIN) * MIN);
     const winEnd = input.toEpoch(day, input.activeEnd);
-    if (winEnd <= winStart) continue;
+    if (winEnd <= winStart) {
+      if (input.toEpoch(day, input.activeStart) < winEnd)
+        for (const acc of input.accounts) for (let k = 0; k < acc.dailyCount; k++) out.skipped.push({ accountId: acc.id, day, reason: "이미 지난 시간" });
+      continue;
+    }
     for (const acc of shuffle(input.accounts, rnd)) {
       const room = Math.max(0, acc.dailyLimit - (counts.get(`${acc.id}|${day}`) ?? 0));
       const n = Math.min(acc.dailyCount, room);
@@ -66,7 +71,7 @@ export function planSlots(input: PlanInput): PlanResult {
         }
         const base = winStart + interval * (i + 0.5) + (rnd() * 2 - 1) * jitter;
         // 가장 가까운 빈 분(minute)을 슬롯 범위(간격의 절반) 안에서 찾는다
-        const lo = Math.max(winStart, input.notBefore, winStart + interval * i);
+        const lo = Math.max(winStart, winStart + interval * i);
         const hi = Math.min(winEnd, winStart + interval * (i + 1));
         const at = nearestFree(Math.min(Math.max(base, lo), hi), lo, hi, acc.id, taken, gaps);
         if (at === null) {

@@ -32,7 +32,7 @@ export default async function MonetizePage() {
           activeHours={d.settings.activeHours}
           sameAccountGapMinutes={d.settings.sameAccountGapMinutes}
           aiReady={d.aiReady}
-          tomorrow={d.tomorrow}
+          today={d.today}
         />
         <BatchList batches={d.batches} />
       </div>

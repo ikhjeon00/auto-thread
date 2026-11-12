@@ -29,7 +29,7 @@ type Props = {
   activeHours: { start: string; end: string };
   sameAccountGapMinutes: number;
   aiReady: boolean;
-  tomorrow: string;
+  today: string;
 };
 
 type Row = { selected: boolean; general: string; product: string };
@@ -46,7 +46,7 @@ export function FarmForm(p: Props) {
       }),
     ),
   );
-  const [startDate, setStartDate] = useState(p.tomorrow);
+  const [startDate, setStartDate] = useState(p.today);
   const [days, setDays] = useState("7");
   const [activeStart, setActiveStart] = useState(p.activeHours.start);
   const [activeEnd, setActiveEnd] = useState(p.activeHours.end);
@@ -176,7 +176,8 @@ export function FarmForm(p: Props) {
         <section className="grid gap-4 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="f-start">시작일</Label>
-            <Input id="f-start" type="date" className="num" min={p.tomorrow} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <Input id="f-start" type="date" className="num" min={p.today} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            {startDate === p.today && <p className="text-xs text-muted-foreground">오늘은 지금부터 10분 뒤 ~ 활동 시간 끝 사이에 나눠 올립니다.</p>}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="f-days">기간(일, 1~30)</Label>

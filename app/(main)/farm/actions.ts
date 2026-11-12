@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth/require";
 import { errorMessage } from "@/lib/errors";
 import { db } from "@/lib/db/admin";
 import { env } from "@/lib/env";
+import { todayKst } from "@/lib/calendar";
 import { enqueueJob, runJobs } from "@/lib/jobs";
 import { mediaItemSchema } from "@/lib/compose/schema";
 import { releasePoolItem } from "@/lib/pool/pick";
@@ -43,7 +44,10 @@ const farmInput = z
       .array(z.object({ id: uuid, generalCount: z.coerce.number().int().min(0).max(30), productCount: z.coerce.number().int().min(0).max(30) }))
       .min(1, "계정을 하나 이상 고르세요.")
       .max(50),
-    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "시작일을 고르세요."),
+    startDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "시작일을 고르세요.")
+      .refine((d) => d >= todayKst(), "시작일은 오늘 이후로 고르세요."),
     days: z.coerce.number().int().min(1, "기간은 1~30일입니다.").max(30, "기간은 1~30일입니다."),
     activeStart: hm,
     activeEnd: hm,

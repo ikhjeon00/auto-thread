@@ -79,6 +79,21 @@ describe("planSlots", () => {
     expect(r.slots.filter((s) => s.day === "2026-11-21")).toHaveLength(5);
   });
 
+  it("오늘 시작이면 남은 시간대에 하루 글 수를 고르게 나눠 배치", () => {
+    const now = toEpoch("2026-11-20", "18:00");
+    const r = planSlots(base({ notBefore: now, days: ["2026-11-20"], accounts: [{ id: "A", dailyCount: 3, dailyLimit: 10 }] }));
+    expect(r.slots).toHaveLength(3);
+    expect(r.skipped).toHaveLength(0);
+    expect(r.slots.every((s) => s.at >= now && s.at < toEpoch("2026-11-20", "23:00"))).toBe(true);
+  });
+
+  it("활동 시간이 이미 끝난 날은 이미 지난 시간으로 건너뛴다", () => {
+    const r = planSlots(base({ notBefore: toEpoch("2026-11-20", "23:30"), accounts: [{ id: "A", dailyCount: 2, dailyLimit: 10 }] }));
+    expect(r.slots.filter((s) => s.day === "2026-11-20")).toHaveLength(0);
+    expect(r.skipped.filter((s) => s.day === "2026-11-20" && s.reason === "이미 지난 시간")).toHaveLength(2);
+    expect(r.slots.filter((s) => s.day === "2026-11-21")).toHaveLength(2);
+  });
+
   it("팔로워 구간표 추천", () => {
     const tiers = [
       { min: 0, max: 99, daily_posts: 3 },
